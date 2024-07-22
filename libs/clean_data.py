@@ -5,7 +5,7 @@ import pandas as pd
 from tqdm import tqdm
 from minio import Minio
 from typing import Union, List
-from video_handler import VideoHandler
+from libs.video_handler import VideoHandler
 
 
 class ProcessData:
@@ -14,7 +14,7 @@ class ProcessData:
         self.bucket = bucket
         self.host_folder = './tmp/'
 
-    def read_input_data(self, chunks_path: str):
+    def read_input_data(self, chunks_path: str,):
         tasks_df = pd.read_csv(chunks_path)
         return tasks_df
 
@@ -23,7 +23,7 @@ class ProcessData:
         df_list = []
         files = os.listdir(host_folder)
         for file in files:
-            if file.endswith('.json'):
+            if file.endswith('.json') and "output_json_timestamp" not in file:
                 print(file)
                 path = f'{host_folder}/{file}'
                 df_data = pd.read_json(path)
@@ -184,8 +184,11 @@ class ProcessData:
 
 if __name__ == '__main__':
 
+    data_path = '../data/outputs/data.csv'
+
     # Join VIDEO
-    video_handler = VideoHandler()
+    output_folder = './tmp/'
+    video_handler = VideoHandler( output_folder = output_folder)
 
     # Minio client
     minio_client = Minio("0.0.0.0:9000",  # Replace with your MinIO storage address
@@ -203,7 +206,6 @@ if __name__ == '__main__':
         bucket=bucket_name
     )
     
-    data_path = '../data/outputs/data.csv'
 
     df = data_handler.read_input_data(data_path)
     df = data_handler.join_chunks(df, video_id=None)
@@ -230,7 +232,7 @@ if __name__ == '__main__':
     df = data_handler.remove_duplicates(df, conditions= ['frame_number', 'class', 'track_id'])
     data_handler.create_aggregated_data(df, 
                                         keep_columns=['timestamp', 'class', 'name', 'track_id', 's3_path'], 
-                                        output_path='./output_json_timestamp.json', additional_data=additional_data)
+                                        output_path=f'{output_folder}output_json_timestamp.json', additional_data=additional_data)
 
     
 

@@ -11,7 +11,7 @@ def load_demo_data(host_folder: str) -> List[dict]:
     data_dict = []
     files = os.listdir(host_folder)
     for file in files:
-        if file.endswith('.json'):
+        if file.endswith('.json') and "output_json_timestamp" not in file:
             with open(host_folder + "/" + file, 'r') as f:
                 data_dict.append(json.load(f))
     return data_dict
