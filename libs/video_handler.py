@@ -36,6 +36,7 @@ class VideoHandler:
 
         for video_path in video_list:
             print("Working on video: ", video_path)
+            
             cap = cv2.VideoCapture(video_path)
 
             while True:
@@ -83,7 +84,8 @@ class VideoHandler:
 
         # Remove duplicates 
         video_output_paths = list(set(video_output_paths))
-
+        # Remove self.output_video_build_name  from the list
+        # video_output_paths = [x for x in video_output_paths if x.split("/")[-1] != VideoHandler.output_video_build_name ]
         return video_output_paths
 
     def process(self, video_id: str, df_videos: pd.DataFrame, minio_client: Minio, bucket_name: str) -> str:

@@ -56,7 +56,7 @@ class ProcessData:
 
     def join_chunks(self, tasks_df: pd.DataFrame,  video_id: Union[str, None]):
 
-        if video_id is not None:
+        if video_id:
             df_target = tasks_df[tasks_df['video_id'] == video_id]
 
         df_target = tasks_df.copy()
@@ -139,20 +139,25 @@ class ProcessData:
         
         return df
     
-    def remove_duplicates(self, df: pd.DataFrame, conditions: List[str] = ['frame_number', 'class', 'track_id']):
+    def remove_duplicates(self, df: pd.DataFrame, conditions: Union[List[str], None] = ['frame_number', 'class', 'track_id']):
         
+        if conditions is None:
+            return df
         # Remove repeted rows based on frame_number
         return df.drop_duplicates(subset=conditions, keep='first')
     
     @staticmethod
-    def aggregate_groups(group):
+    def aggregate_groups(group: pd.DataFrame) -> dict:
+        
+        # remove "timestamp" from group
+        group.drop(columns=['timestamp'], inplace=True)
         return {
             "names": group["name"].unique().tolist(),
             "classes": group["class"].unique().tolist(),
             "data": group.to_dict(orient="records")
         }
     
-    def create_aggregated_data(self, df: pd.DataFrame, keep_columns: List[str], output_path: str, additional_data: dict):
+    def create_aggregated_data(self, df: pd.DataFrame, keep_columns: List[str], output_path: str, additional_data: dict) -> dict:
         
         df = df[keep_columns]
         grouped = df.groupby("timestamp", group_keys=False).apply(ProcessData.aggregate_groups).to_dict()
@@ -176,11 +181,7 @@ class ProcessData:
         with open(output_path, 'w') as f:
             f.write(output_json)
             
-            
-        print("Data saved to", output_path)
-
-
-
+        return final_data
 
 if __name__ == '__main__':
 
