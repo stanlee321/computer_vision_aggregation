@@ -22,7 +22,6 @@ from libs.utils import (
 if __name__ == "__main__":
     
     print("Starting ...")
-    
     bucket_name = "my-bucket"
     
     topic_input = 'RESULTS'
@@ -100,6 +99,7 @@ if __name__ == "__main__":
                                         output_name='output_json_timestamp.json')
     
         print("Data saved to", local_data_path)
+
         # Save to Redis
         key_data = put_to_redis(video_id, json_data,  redis_client)
         
@@ -117,3 +117,7 @@ if __name__ == "__main__":
         tasks_df.loc[tasks_df['status'] == 'pending', 'status'] = 'done'
         tasks_df.to_csv(data_df_path, index=False)
         
+        
+        
+        # Send to kafka producer
+        kafka_handler.produce_message('FINE_TASK', key_data_full)
