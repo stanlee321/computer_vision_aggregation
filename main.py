@@ -4,120 +4,125 @@ from libs.video_handler import VideoHandler
 from libs.clean_data import ProcessData
 from libs.queues import KafkaHandler
 from libs.redis_service import RedisClient
-
-
+from libs.api import ApiClient
 from libs.utils import (
-    read_or_create_dataframe,
-    create_pandas_data_task,
-    append_to_tasks_df,
-    check_task_exists,
-    extract_chunk_value,
-    process_data,
-    create_join_video,
-    create_json_data,
-    put_to_redis
+    put_to_redis,
 )
 
+class Application:
+    def __init__(self):
+        self.bucket_name = "my-bucket"
+        self.topic_input = 'video-results'
+        self.topic_fine_detections = 'fine-detections'
+        self.topic_group = 'results-group'
+        self.output_folder = './tmp'
+        self.bootstrap_servers = ['localhost:9093']
+        self.data_handler = ProcessData()
+        self.kafka_handler = KafkaHandler(bootstrap_servers=self.bootstrap_servers)
+        self.client_minio = Minio("0.0.0.0:9000",
+                                    access_key="minioadmin",
+                                    secret_key="minioadmin",
+                                    secure=False)
+        self.video_handler = VideoHandler(output_folder=self.output_folder)
+        self.redis_client = RedisClient(host='0.0.0.0', port=6379)
+        
+        self.api_client = ApiClient("http://127.0.0.1:8000")
+        self.workdir = self.output_folder
+        
+    def create_filenames(self, video_id: str, file:str):
+        filename = file.split('/')[-1]
+        self.workdir = f'{self.output_folder}/{video_id}'
+        output_file_path = f'{self.workdir}/{filename}'
+        return video_id, output_file_path
+    
+    def process_message(self, message):
+        
+        print(f"Consumed message: {message.value}")
+        
+        _message_input = message.value
+        remote_path :str = _message_input['remote_path']
+        video_id: str = _message_input['video_id']
+        
+        # Create filenames
+        video_id, output_file_path = self.create_filenames(video_id, remote_path)
+
+        print(f"current workd ir ", self.workdir)
+        # Download file
+        self.client_minio.fget_object(self.bucket_name, remote_path, output_file_path)
+        
+        # Get id of the chunk
+
+        previous_tasks = self.api_client.get_by_video_id(video_id, status = 'pending')
+        if previous_tasks.status_code != 200:
+            print("No pending tasks found")
+            return
+    
+        df = self.data_handler.create_pandas_data(tasks = previous_tasks)
+        df_original = df.copy()
+        
+        # Get the fps
+        fps = df['fps'].iloc[0]
+        original_video = df['original_video'].iloc[0]
+        
+        self.workdir = f'{self.output_folder}/{video_id}'
+
+        output_files = self.data_handler.download_remote_files(df, self.client_minio, self.bucket_name, self.workdir)       
+        
+        df = self.data_handler.join_chunks(tasks_dir=output_files)
+        df = self.data_handler.create_annotations(df)
+        df = self.data_handler.join_frames(df)
+        df = self.data_handler.create_timestamps(df, fps=fps)
+        
+        # Process the data
+        remote_video_path = self.data_handler.create_join_video(
+            video_id, 
+            df, 
+            minio_client = self.client_minio, 
+            bucket_name= self.bucket_name, 
+            video_handler =self.video_handler)
+        
+        local_file_results = self.data_handler.set_filenames(
+            video_id=video_id, results_file_name = 'output_json_timestamp.json')
+        local_file_results_full = self.data_handler.set_filenames(
+            video_id=video_id, results_file_name = 'output_json_timestamp_full.json')
+
+        json_data =  self.data_handler.create_json_data(df, 
+                                                      annotated_video = remote_video_path, 
+                                                      conditions = ['frame_number', 'class'], 
+                                                      output_path = local_file_results, 
+                                                      keep_columns = ['timestamp', 'class', 'name', 'track_id', 's3_path'],
+                                                      original_video = original_video
+                                                      )
+        
+        key_data = put_to_redis(video_id, json_data, None, self.redis_client, label='lite')
+        json_data_full =  self.data_handler.create_json_data(
+                                             df, 
+                                             annotated_video = remote_video_path, 
+                                             conditions = ['frame_number'], 
+                                             output_path = local_file_results_full, 
+                                             original_video = original_video,
+                                             keep_columns = None)
+
+        key_data_full = put_to_redis(video_id, json_data_full, None, self.redis_client, label="complete")
+
+        # Send the data to the next topic
+        self.kafka_handler.produce_message(self.topic_fine_detections, 
+                                           {   "lite_data": key_data,
+                                               "full_data": key_data_full
+                                            })
+        
+        # update tasks by id in df['id']
+        ids_to_update = df_original['id'].tolist()
+        update_data = {"status": "done"}
+        for id in ids_to_update:
+            self.api_client.update_item_status(id, update_data)
+            
+    def run(self):
+            consumer = self.kafka_handler.create_consumer(self.topic_input, self.topic_group)
+            for message in consumer:
+                self.process_message(message)
 
 if __name__ == "__main__":
-    
-    print("Starting ...")
-    bucket_name = "my-bucket"
-    
-    topic_input = 'RESULTS'
-    topic_group = 'results-group'
-    
-    
-    # Initialize Kafka handler
-    kafka_handler = KafkaHandler(bootstrap_servers=['192.168.1.12:9093'])
-        
-    client_minio = Minio("0.0.0.0:9000",  # Replace with your MinIO storage address
-        access_key = "minioadmin",   # Replace with your access key
-        secret_key = "minioadmin",    # Replace with your secret key
-        secure = False
-    )
-    
-    # Join VIDEO
-    output_folder = './tmp/'
-    video_handler = VideoHandler( output_folder = output_folder)
-    
-    data_handler = ProcessData(
-        minio_client=client_minio,
-        bucket=bucket_name
-    )
-    
-    
-    # Redis Client
-    redis_client = RedisClient(host='0.0.0.0', port=6379)
-    
-
-    # # Create Kafka consumer
-    consumer = kafka_handler.create_consumer(topic_input, topic_group)
-
-    for message in consumer:
-        
-        data_df_path = "./data/outputs/data.csv"
-        tasks_df = read_or_create_dataframe(data_df_path, status='pending')
-    
-        print(f"Consumed message: {message.value}")
-        file : str = message.value
-        
-        video_id = file.split('/')[0]
-        filename = file.split('/')[-1]
-        
-        # Process data
-        output_file_path =  f'./data/outputs/{filename}'
-        client_minio.fget_object(bucket_name, file, output_file_path)
-        chunk_id = extract_chunk_value(output_file_path)
-        
-        # Save to the tasks table
-        if check_task_exists(video_id, chunk_id, tasks_df):
-            print(f"Task with video_id: {video_id} and chunk: {chunk_id} already exists.")
-            df_to_work = tasks_df[tasks_df['status'] == 'pending']
-            if df_to_work.empty:
-                print("No pending tasks")
-                continue
-        
-        new_task_data = create_pandas_data_task(output_file_path, video_id, status='pending')
-        tasks_df = append_to_tasks_df(new_task_data, tasks_df)
-        
-        tasks_df.to_csv(data_df_path, index=False)
-
-        # Filter only pending tasks
-        df_to_work = tasks_df[tasks_df['status'] == 'pending']
-
-        # Process data
-        df = process_data(data_path = data_df_path, data_handler=data_handler, video_id=video_id)
-        
-        # Create video
-        remote_video_path = create_join_video(video_id, df, client_minio, bucket_name, video_handler=video_handler)
-        
-        # Create JSON data
-        local_data_path, json_data = create_json_data(df, 
-                                        remote_video_path, 
-                                        conditions = ['frame_number', 'class', 'track_id'], 
-                                        output_name='output_json_timestamp.json')
-    
-        print("Data saved to", local_data_path)
-
-        # Save to Redis
-        key_data = put_to_redis(video_id, json_data,  redis_client)
-        
-        
-        # Create Full Data for Further Analysis
-        local_data_path_full, json_data_full = create_json_data(df, 
-                                remote_video_path, 
-                                conditions = None, 
-                                output_name = 'output_json_timestamp_full.json')
-        # Save to Redis
-        key_data_full = put_to_redis(video_id, json_data_full, redis_client)
-
-
-        # Update columns with "pending" to "done" in the tasks_df
-        tasks_df.loc[tasks_df['status'] == 'pending', 'status'] = 'done'
-        tasks_df.to_csv(data_df_path, index=False)
-        
-        
-        
-        # Send to kafka producer
-        kafka_handler.produce_message('FINE_TASK', key_data_full)
+    print("Starting...")
+    app = Application()
+    app.run()

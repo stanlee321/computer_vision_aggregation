@@ -1,50 +1,43 @@
-from libs.queues import KafkaHandler
-import json
-from minio import Minio
 import os
+import json
+from libs.queues import KafkaHandler
 from typing import List
-from libs.utils import list_files_in_folder
+from libs.api import ApiClient
 
-
-def load_demo_data(host_folder: str) -> List[dict]:
-    # List files in output/{asset_id} dir
-    data_dict = []
-    files = os.listdir(host_folder)
-    for file in files:
-        if file.endswith('.json') and "output_json_timestamp" not in file:
-            with open(host_folder + "/" + file, 'r') as f:
-                data_dict.append(json.load(f))
-    return data_dict
-                
-            
+     
 if __name__ == '__main__':
         
            
     print("Startingg...")
-    kafka_address = '192.168.1.12:9093'
 
+    kafka_address = 'localhost:9093'
     kafka_handler = KafkaHandler(bootstrap_servers=[kafka_address])
-        
-    client = Minio("0.0.0.0:9000",  # Replace with your MinIO storage address
-        access_key = "minioadmin",   # Replace with your access key
-        secret_key = "minioadmin",    # Replace with your secret key
-        secure = False
-    )
-    
-    bucket_name = "my-bucket"
-    test_vide_id = '5049e5f6-ec91-4afb-b2f5-a63a991a7993'
-    
-    # load json files from ../data folder
-    data_folder = "./data/inputs/"
-    files =  list_files_in_folder(client, bucket_name, test_vide_id)        
-    
-    print("Consuming... ")
+    api_client = ApiClient("http://127.0.0.1:8000")
 
-    for data in files:
-        print("Sending...")
-        # Create a producer and send a message
-        kafka_handler.produce_message('RESULTS', data)
+    bucket_name = "my-bucket"
+    topic_results = 'video-results'
+
+    chunks  = [1, 2, 3, 4, 5, 6]
+
+    for index in chunks:
         
+        new_item = {
+            "remote_path": f"8d0a09c1-4d74-469e-947f-26d4dcf2bc85/XVR_ch1_main_20210910141900_20210910142500_chunk_{index}_of_6_results.json",
+            "video_id": "8d0a09c1-4d74-469e-947f-26d4dcf2bc85",
+            "status": "pending",
+            "original_video": "some video url",
+            "fps": 2.7,
+        }
+        
+        response = api_client.create_item(new_item)
+        if response.status_code != 200:
+            print(f"Failed to create item. Status Code: {response.status_code}. Response: {response.text}")
+            continue
+        
+        # Create a producer and send a message
+        kafka_handler.produce_message(topic_results, new_item)
+        
+        print(f"Message sent: {new_item}")
     # # Create a consumer and consume messages
     # consumer = kafka_handler.create_consumer('profiles_2', 'profiles-group')
     # res = kafka_handler.consume_messages(consumer, process_message_callback=lambda x: print(x))

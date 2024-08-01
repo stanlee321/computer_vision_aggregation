@@ -2,32 +2,43 @@ import os
 import re
 import json
 import pandas as pd
-from tqdm import tqdm
 from minio import Minio
-from typing import Union, List
+from typing import Union, List, Tuple
 from libs.video_handler import VideoHandler
 
 
 class ProcessData:
-    def __init__(self, minio_client: Minio, bucket: str):
-        self.minio_client = minio_client
-        self.bucket = bucket
-        self.host_folder = './tmp/'
+    def __init__(self):
+        self.output_folder = './tmp/'
+        self.workdir = self.output_folder
+        
+    def create_data_task(self, remote_path, file_path:str, video_id, status: str):
+        # Mockup for creating task data
+        return pd.DataFrame({
+            'remote_path': remote_path, 
+            'file_path': [file_path], 
+            'video_id': [video_id], 
+            'status': [status]})
 
-    def read_input_data(self, chunks_path: str,):
-        tasks_df = pd.read_csv(chunks_path)
-        return tasks_df
+    def read(self, path: str) -> pd.DataFrame:
+        return pd.read_csv(path)
 
-    def get_video_data(self, host_folder) -> pd.DataFrame:
+    def write(self, data: pd.DataFrame, path) -> None:
+        data.to_csv(path, index=False)
+
+    def check_task_exists(self, video_id: str, chunk_id: str, df: pd.DataFrame):
+        # Mockup for checking if a task exists
+        return not df[(df['video_id'] == video_id) & (df['chunk_id'] == chunk_id)].empty
+    
+    def update_table_task(self, new_task_data, tasks_df):
+        return pd.concat([tasks_df, new_task_data], ignore_index=True)
+
+    def get_json_data(self, tasks_dir: str) -> pd.DataFrame:
         # List files in output/{asset_id} dir
         df_list = []
-        files = os.listdir(host_folder)
-        for file in files:
-            if file.endswith('.json') and "output_json_timestamp" not in file:
-                print(file)
-                path = f'{host_folder}/{file}'
-                df_data = pd.read_json(path)
-                df_list.append(df_data)
+        for file in tasks_dir:
+            df_data = pd.read_json(file)
+            df_list.append(df_data)
 
         return pd.concat(df_list)
                 
@@ -54,24 +65,13 @@ class ProcessData:
         return pd.json_normalize(inner_data)
 
 
-    def join_chunks(self, tasks_df: pd.DataFrame,  video_id: Union[str, None]):
-
-        if video_id:
-            df_target = tasks_df[tasks_df['video_id'] == video_id]
-
-        df_target = tasks_df.copy()
-        
-        for index, row in df_target.iterrows():
-            row_dict = row.to_dict()
-
-            filename = row_dict['remote_data_path'].split("/")[-1]
-            file = row_dict['remote_data_path']
-            # Process data
-            output_file_path = f'./tmp/{filename}'
-            self.minio_client.fget_object(self.bucket, file, output_file_path)
-
-        df_tasks = self.get_video_data(host_folder=self.host_folder)
+    def join_chunks(self, tasks_dir) -> pd.DataFrame:
+        df_tasks = self.get_json_data(tasks_dir=tasks_dir)
         return self.clean_data(df_tasks)
+
+    @staticmethod
+    def create_pandas_data(tasks: List[dict]) -> pd.DataFrame:
+        return pd.DataFrame(tasks)
 
     @staticmethod
     def extract_chunk_and_annotated(filename: str) -> dict:
@@ -85,6 +85,25 @@ class ProcessData:
             return {'chunk': chunk_value, 'annotated': annotated_value}
         else:
             raise ValueError("Chunk or annotated value not found in the filename")
+
+
+
+    @staticmethod
+    def download_remote_files(df: pd.DataFrame, client: Minio, bucket_name: str, workdir: str) -> List[str]:
+
+        task_remote_paths:List[str] = list(df['remote_path'].values)
+
+        output_files = []
+        for task_remote_file in task_remote_paths:
+            file_name = task_remote_file.split('/')[-1]            
+            file_output_path = f'{workdir}/{file_name}'
+            client.fget_object(bucket_name, 
+                            task_remote_file, 
+                            file_output_path)
+            output_files.append(file_output_path)
+                
+        return output_files
+
 
     def create_annotations(self, df: pd.DataFrame) -> pd.DataFrame:
         
@@ -139,7 +158,7 @@ class ProcessData:
         
         return df
     
-    def remove_duplicates(self, df: pd.DataFrame, conditions: Union[List[str], None] = ['frame_number', 'class', 'track_id']):
+    def remove_duplicates(self, df: pd.DataFrame, conditions: Union[List[str], None] ):
         
         if conditions is None:
             return df
@@ -157,7 +176,10 @@ class ProcessData:
             "data": group.to_dict(orient="records")
         }
     
-    def create_aggregated_data(self, df: pd.DataFrame, keep_columns: List[str], output_path: str, additional_data: dict) -> dict:
+    def create_aggregated_data(self, df: pd.DataFrame, keep_columns: Union[List[str], None], output_path: str, additional_data: dict) -> dict:
+        
+        if keep_columns is None:
+            keep_columns = df.columns.tolist()
         
         df = df[keep_columns]
         grouped = df.groupby("timestamp", group_keys=False).apply(ProcessData.aggregate_groups).to_dict()
@@ -183,6 +205,54 @@ class ProcessData:
             
         return final_data
 
+    def set_filenames(self, video_id: str, results_file_name: str) -> Tuple[str, str]:
+        
+        self.workdir = f"{self.output_folder}{video_id}"
+        output_file_path = f"{self.workdir}/{results_file_name}"
+        return output_file_path
+
+    def create_json_data(self, df: pd.DataFrame,
+                        annotated_video: str, 
+                        conditions: Union[List[str], None],
+                        output_path: str = 'output_json_timestamp.json',
+                        original_video: str = None,
+                        keep_columns: Union[List[str], None] = None
+                        ) -> dict:
+        additional_data = {
+            'annotated_video': annotated_video,
+            'original_video': original_video
+        }
+                
+        # remove duplicates
+        df = self.remove_duplicates(df, conditions= conditions)
+        
+        # Create aggregated data
+        return self.create_aggregated_data(df, 
+                                            keep_columns=keep_columns, 
+                                            output_path=output_path, 
+                                            additional_data=additional_data)
+        
+        
+    def create_join_video(self, video_id: str, 
+                        df: pd.DataFrame, 
+                        minio_client: Minio, 
+                        bucket_name: str,
+                        video_handler: VideoHandler) -> str:
+        
+        
+        df_videos = df.drop_duplicates(subset=['annotated_video'], keep='first')
+
+        df_videos['annotated_video'] = df_videos['annotated_video'].apply(lambda x: x.split("/")[-1])
+        df_videos['remote_annotated_video'] = df_videos['annotated_video'].apply(lambda x: f"{video_id}/{x}")
+        df_videos['local_annotated_video'] = df_videos['annotated_video'].apply(lambda x: f"{self.workdir}/{x}")
+
+        videos_info_list = df_videos[['annotated_video', 'remote_annotated_video', 'local_annotated_video']].to_dict(orient='records')
+
+        # Join videos
+        video_output_path_remote = video_handler.process(video_id, videos_info_list, minio_client, bucket_name)
+        
+        return video_output_path_remote
+
 if __name__ == '__main__':
 
     data_path = '../data/outputs/data.csv'
@@ -203,13 +273,11 @@ if __name__ == '__main__':
 
     
     data_handler = ProcessData(
-        minio_client=minio_client,
-        bucket=bucket_name
     )
     
 
-    df = data_handler.read_input_data(data_path)
-    df = data_handler.join_chunks(df, video_id=None)
+    df = data_handler.read(data_path)
+    df = data_handler.join_chunks(df, video_id=None, minio_clien = Minio, bucket=bucket_name)
     df = data_handler.create_annotations(df)
     
     # Join frame numbers
@@ -236,4 +304,3 @@ if __name__ == '__main__':
                                         output_path=f'{output_folder}output_json_timestamp.json', additional_data=additional_data)
 
     
-

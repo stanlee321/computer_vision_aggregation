@@ -1,5 +1,6 @@
 import cv2
 import os
+import re
 from typing import List
 from minio import Minio
 import pandas as pd
@@ -14,6 +15,20 @@ class VideoHandler:
             
         self.output_folder = './tmp/'
         self.output_video_build_name = 'output_annotated_video.mp4'
+        self.aux_output_video_build_name = 'old_output_annotated_video.mp4'
+
+        self.work_dir = './tmp/'
+        
+        self.video_annotated_name = None
+        self.remote_annotated_video_path = None
+        self.local_annotated_video_path = None
+        
+        self.aux_output_local_video_build_name = None
+        
+        self.build_local_video_path = None
+        self.build_remote_video_path = None
+        
+        
 
     @staticmethod
     def get_video_properties(video_path):
@@ -25,7 +40,7 @@ class VideoHandler:
         return width, height, fps
 
     @staticmethod
-    def join_videos(video_list: List[str], output_path: str) -> str:
+    def join_videos(video_list: List[str], output_path: str):
         print(f"Joining {len(video_list)} videos")
         # Get properties from the first video
         width, height, fps = VideoHandler.get_video_properties(video_list[0])
@@ -36,7 +51,6 @@ class VideoHandler:
 
         for video_path in video_list:
             print("Working on video: ", video_path)
-            
             cap = cv2.VideoCapture(video_path)
 
             while True:
@@ -48,64 +62,78 @@ class VideoHandler:
             cap.release()
 
         out.release()
-        print(f"Output video saved as {output_path}")
-        return output_path
 
-    @staticmethod
-    def get_annotated_video_list(video_id: str, df: pd.DataFrame, client: Minio, bucket_name: str, output_folder: str, build_remote_video_path: str) -> List[str]:
+
+    def get_annotated_video_list(self, videos_list: List[dict], client: Minio, bucket_name: str) -> List[str]:
         # Join vide
         video_output_paths = []
-        # Check if remote video build exists
+        # Check if remote video build exists 
         
         try:
-            client.stat_object(bucket_name, build_remote_video_path)
+            client.stat_object(bucket_name, self.build_remote_video_path)
             # Download to local
-            remote_file_name = "old_"+build_remote_video_path.split("/")[-1]
-            output_video_build_path = f'{output_folder}{remote_file_name}'
-            client.fget_object(bucket_name, build_remote_video_path,output_video_build_path)
-            video_output_paths.append(output_video_build_path)
+            client.fget_object(bucket_name, self.build_remote_video_path, self.aux_output_local_video_build_name)
+            video_output_paths.append(self.aux_output_local_video_build_name)
         except Exception as e:
             print(e)
-            print(f"Video build {build_remote_video_path} not found, building it now")
+            print(f"Video build {self.build_remote_video_path} not found, building it now")
             
-        for index, row in tqdm(df.iterrows()):
-            row_dict = row.to_dict()
-
-            filename = row_dict['annotated_video'].split("/")[-1]
-            file = f"{video_id}/{row_dict['annotated_video']}"
-
-            # Process data
-            output_file_path = f'{output_folder}{filename}'
-
+        for video_file in videos_list:
+            remote_file = video_file['remote_annotated_video']
+            local_file = video_file['local_annotated_video']
             # Download the video
-            client.fget_object(bucket_name, file, output_file_path)
-            
-            video_output_paths.append(output_file_path)
+            client.fget_object(bucket_name, remote_file, local_file)
+            video_output_paths.append(local_file)
 
         # Remove duplicates 
         video_output_paths = list(set(video_output_paths))
-        # Remove self.output_video_build_name  from the list
-        # video_output_paths = [x for x in video_output_paths if x.split("/")[-1] != VideoHandler.output_video_build_name ]
+        video_output_paths = self.sort_files_by_chunk(video_output_paths)
         return video_output_paths
+    
+    @staticmethod
+    def sort_files_by_chunk(file_list):
+        # Helper function to extract the chunk number
+        def extract_chunk_number(file_path):
+            # Use regular expression to find the "chunk_X_of_Y" pattern
+            match = re.search(r'chunk_(\d+)_of_\d+', file_path)
+            if match:
+                # Return the chunk number as an integer
+                return int(match.group(1))
+            return 0  # Default to 0 if no match is found
 
-    def process(self, video_id: str, df_videos: pd.DataFrame, minio_client: Minio, bucket_name: str) -> str:
+        # Sort the list using the extracted chunk number
+        sorted_list = sorted(file_list, key=extract_chunk_number)
+        return sorted_list
 
-        video_output_path_remote = f'{video_id}/{self.output_video_build_name}'
 
-        videos_list = VideoHandler.get_annotated_video_list(
-            video_id=video_id,
-            df=df_videos,
-            client=minio_client,
-            bucket_name=bucket_name,
-            output_folder=self.output_folder,
-            build_remote_video_path=video_output_path_remote)
-        print("Videos list: ", videos_list)
-        local_video_output_path = f'{self.output_folder}{self.output_video_build_name}'
-        video_output_path = VideoHandler.join_videos(videos_list, local_video_output_path)
-        # Upload video to Minio
-        minio_client.fput_object(bucket_name, video_output_path_remote, video_output_path)
+
+    def set_names(self, video_id: str, video_path_data: dict):
+        self.work_dir  = f"{self.output_folder}{video_id}/"
         
-        return video_output_path_remote
+        self.video_annotated_name = video_path_data['annotated_video']
+        self.remote_annotated_video_path = video_path_data['remote_annotated_video']
+        self.local_annotated_video_path = video_path_data['local_annotated_video']
+        
+        self.aux_output_local_video_build_name = f"{self.work_dir}{self.aux_output_video_build_name}"
+        
+        self.build_local_video_path = f"{self.work_dir}/{self.output_video_build_name}"
+        self.build_remote_video_path = f"{video_id}/{self.output_video_build_name}"
+        
+    def process(self, video_id: str, videos_list: List[dict], minio_client: Minio, bucket_name: str) -> str:
+
+        self.set_names(video_id, videos_list[0])
+        
+        videos_list = self.get_annotated_video_list(
+            videos_list=videos_list,
+            client=minio_client,
+            bucket_name=bucket_name)        
+        
+        VideoHandler.join_videos(videos_list, self.build_local_video_path)
+        
+        # Upload video to Minio
+        minio_client.fput_object(bucket_name, self.build_remote_video_path, self.build_local_video_path)
+        
+        return self.build_remote_video_path
     
 
 

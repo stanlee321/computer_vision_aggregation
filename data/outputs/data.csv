@@ -1,2 +1,6 @@
 id,video_id,status,chunk_id,total_frames,fps,remote_data_path,annotated_video_path
-468628437,5049e5f6-ec91-4afb-b2f5-a63a991a7993,done,4,4350,29,5049e5f6-ec91-4afb-b2f5-a63a991a7993/tmp8_r9nace_chunk_4_of_4350.mp4_results.json,5049e5f6-ec91-4afb-b2f5-a63a991a7993/tmp8_r9nace_chunk_4_of_4350_annotated.mp4
+135728885,5049e5f6-ec91-4afb-b2f5-a63a991a7993,PENDING,0,4350,29,5049e5f6-ec91-4afb-b2f5-a63a991a7993/tmp8_r9nace_chunk_0_of_4350.mp4_results.json,5049e5f6-ec91-4afb-b2f5-a63a991a7993/tmp8_r9nace_chunk_0_of_4350_annotated.mp4
+428895628,5049e5f6-ec91-4afb-b2f5-a63a991a7993,PENDING,1,4350,29,5049e5f6-ec91-4afb-b2f5-a63a991a7993/tmp8_r9nace_chunk_1_of_4350.mp4_results.json,5049e5f6-ec91-4afb-b2f5-a63a991a7993/tmp8_r9nace_chunk_1_of_4350_annotated.mp4
+678194806,5049e5f6-ec91-4afb-b2f5-a63a991a7993,PENDING,2,4350,29,5049e5f6-ec91-4afb-b2f5-a63a991a7993/tmp8_r9nace_chunk_2_of_4350.mp4_results.json,5049e5f6-ec91-4afb-b2f5-a63a991a7993/tmp8_r9nace_chunk_2_of_4350_annotated.mp4
+899583672,5049e5f6-ec91-4afb-b2f5-a63a991a7993,PENDING,3,4350,29,5049e5f6-ec91-4afb-b2f5-a63a991a7993/tmp8_r9nace_chunk_3_of_4350.mp4_results.json,5049e5f6-ec91-4afb-b2f5-a63a991a7993/tmp8_r9nace_chunk_3_of_4350_annotated.mp4
+881094244,5049e5f6-ec91-4afb-b2f5-a63a991a7993,PENDING,4,4350,29,5049e5f6-ec91-4afb-b2f5-a63a991a7993/tmp8_r9nace_chunk_4_of_4350.mp4_results.json,5049e5f6-ec91-4afb-b2f5-a63a991a7993/tmp8_r9nace_chunk_4_of_4350_annotated.mp4
