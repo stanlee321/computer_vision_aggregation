@@ -23,6 +23,7 @@ def load_data():
             "original_video": ["some video url"] * 3,
             "video_id": ["some id"] * 3,
             "status": ["some status"] * 3,
+            "kind": ["ground"] * 3, # or fine
             "fps": [2.7] * 3
         }
         df = pd.DataFrame(data)
@@ -46,6 +47,7 @@ class ItemRequest(BaseModel):
     original_video: str
     video_id: str
     status: str
+    kind: str
     fps: float
     
 class UpdateStatusRequest(BaseModel):
@@ -73,12 +75,19 @@ def read_items():
 @app.get("/items/video_id/{video_id}/")
 def read_by_video_id(video_id: str, status: str = Query(
                                 default=None, 
-                                description="Filter items by status")):
+                                description="Filter items by status"),
+                                kind: str = Query(
+                                default=None,
+                                description="Filter items by kind")
+                     ):
     df = load_data()
-    
-    # Filter dataframe based on provided video_id and optional status
-    if status:
+    # Filter dataframe based on provided video_id and optional status and kind
+    if status and kind:
+        items = df[(df['video_id'] == video_id) & (df['status'] == status) & (df['kind'] == kind)]
+    elif status:
         items = df[(df['video_id'] == video_id) & (df['status'] == status)]
+    elif kind:
+        items = df[(df['video_id'] == video_id) & (df['kind'] == kind)]
     else:
         items = df[df['video_id'] == video_id]
 
