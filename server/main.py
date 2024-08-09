@@ -39,6 +39,8 @@ app = FastAPI()
 df = load_data()
 
 def create_id(df):
+    if df.empty:
+        return 1
     return df['id'].max() + 1
 
 class ItemRequest(BaseModel):
