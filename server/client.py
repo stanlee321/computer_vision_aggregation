@@ -1,15 +1,17 @@
 import requests
 
+
 class VideoHandlerClient:
     def __init__(self, base_url):
         self.base_url = base_url
-    
+
     def get_all_items(self):
         response = requests.get(f"{self.base_url}/items/")
         try:
             return response.json()
         except requests.exceptions.JSONDecodeError:
-            print(f"Failed to decode JSON. Status Code: {response.status_code}. Response Text: '{response.text}'")
+            print(
+                f"Failed to decode JSON. Status Code: {response.status_code}. Response Text: '{response.text}'")
             return None
 
     def get_item(self, item_id):
@@ -17,7 +19,8 @@ class VideoHandlerClient:
         try:
             return response.json()
         except requests.exceptions.JSONDecodeError:
-            print(f"Failed to decode JSON. Status Code: {response.status_code}. Response Text: '{response.text}'")
+            print(
+                f"Failed to decode JSON. Status Code: {response.status_code}. Response Text: '{response.text}'")
             return None
 
     def create_item(self, item_data):
@@ -25,14 +28,15 @@ class VideoHandlerClient:
         return response.json()
 
     def update_item(self, item_id, item_data):
-        response = requests.put(f"{self.base_url}/items/{item_id}", json=item_data)
+        response = requests.put(
+            f"{self.base_url}/items/{item_id}", json=item_data)
         return response.json()
 
     def delete_item(self, item_id):
         response = requests.delete(f"{self.base_url}/items/{item_id}")
         return response.json()
-    
-    
+
+
 # Example usage
 if __name__ == "__main__":
     client = VideoHandlerClient("http://127.0.0.1:8000")
