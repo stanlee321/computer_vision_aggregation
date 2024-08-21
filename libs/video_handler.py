@@ -9,15 +9,15 @@ from tqdm import tqdm
 
 class VideoHandler:
     
-    def __init__(self, output_folder: str = "./tmp/") -> None:
+    def __init__(self, output_folder: str = "./tmp") -> None:
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
             
-        self.output_folder = './tmp/'
+        self.output_folder = './tmp'
         self.output_video_build_name = 'output_annotated_video.mp4'
         self.aux_output_video_build_name = 'old_output_annotated_video.mp4'
 
-        self.work_dir = './tmp/'
+        self.work_dir = './tmp'
         
         self.video_annotated_name = None
         self.remote_annotated_video_path = None
@@ -49,7 +49,7 @@ class VideoHandler:
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for MP4
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-        for video_path in video_list:
+        for video_path in tqdm(video_list):
             print("Working on video: ", video_path)
             cap = cv2.VideoCapture(video_path)
 
@@ -107,17 +107,17 @@ class VideoHandler:
 
 
 
-    def set_names(self, video_id: str, video_path_data: dict):
-        self.work_dir  = f"{self.output_folder}{video_id}/"
+    def set_names(self,  video_id: str, video_path_data: dict):
+        self.work_dir  = os.path.join(self.output_folder, video_id)
         
         self.video_annotated_name = video_path_data['annotated_video']
         self.remote_annotated_video_path = video_path_data['remote_annotated_video']
         self.local_annotated_video_path = video_path_data['local_annotated_video']
         
-        self.aux_output_local_video_build_name = f"{self.work_dir}{self.aux_output_video_build_name}"
+        self.aux_output_local_video_build_name = os.path.join(self.work_dir, self.aux_output_video_build_name)
         
-        self.build_local_video_path = f"{self.work_dir}/{self.output_video_build_name}"
-        self.build_remote_video_path = f"{video_id}/{self.output_video_build_name}"
+        self.build_local_video_path = os.path.join(self.work_dir, self.output_video_build_name)
+        self.build_remote_video_path = os.path.join(video_id, self.output_video_build_name)
         
     def process(self, video_id: str, videos_list: List[dict], minio_client: Minio, bucket_name: str) -> str:
 

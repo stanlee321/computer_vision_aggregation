@@ -13,4 +13,6 @@ pip  install -r requirements.txt
 unicorn main:app
 
 python -m  fastapi dev main.py
+
+uvicorn main:app --reload
 ```

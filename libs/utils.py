@@ -2,7 +2,7 @@ import re
 import json
 import random
 import time
-
+from datetime import datetime
 from typing import Dict, Any, Union
 
 def generate_unique_id():
@@ -30,7 +30,6 @@ def put_to_redis(
         # Load data from local path to json_data
         with open(local_data_path, 'r') as file:
             json_data = json.load(file)
-    
     # Save to Redis
     key = f"video:{video_id}_label:{label}"
     

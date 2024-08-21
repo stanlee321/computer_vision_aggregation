@@ -9,7 +9,7 @@ from libs.video_handler import VideoHandler
 
 class ProcessData:
     def __init__(self):
-        self.output_folder = './tmp/'
+        self.output_folder = './tmp'
         self.workdir = self.output_folder
         
     def create_data_task(self, remote_path, file_path:str, video_id, status: str):
@@ -70,7 +70,9 @@ class ProcessData:
         return self.clean_data(df_tasks)
 
     @staticmethod
-    def create_pandas_data(tasks: List[dict]) -> pd.DataFrame:
+    def create_pandas_data(tasks: Union[List[dict], str]) -> pd.DataFrame:
+        if isinstance(tasks, str):
+            return pd.read_csv(tasks)
         return pd.DataFrame(tasks)
 
     @staticmethod
@@ -78,11 +80,14 @@ class ProcessData:
         # Use regular expressions to find the chunk and annotated values
         chunk_match = re.search(r'chunk_(\d+)', filename)
         annotated_match = re.search(r'annotated_(\d+)', filename)
-        
+        total_chunks_match = re.search(r'of_(\d+)', filename)
+
         if chunk_match and annotated_match:
             chunk_value = int(chunk_match.group(1))
             annotated_value = int(annotated_match.group(1))
-            return {'chunk': chunk_value, 'annotated': annotated_value}
+            total_chunks_match = int(total_chunks_match.group(1))
+
+            return {'chunk': chunk_value, 'annotated': annotated_value, 'total_chunks': total_chunks_match}
         else:
             raise ValueError("Chunk or annotated value not found in the filename")
 
@@ -96,7 +101,7 @@ class ProcessData:
         output_files = []
         for task_remote_file in task_remote_paths:
             file_name = task_remote_file.split('/')[-1]            
-            file_output_path = f'{workdir}/{file_name}'
+            file_output_path = os.path.join(workdir, file_name)
             client.fget_object(bucket_name, 
                             task_remote_file, 
                             file_output_path)
@@ -110,6 +115,8 @@ class ProcessData:
         df['metric'] = df['original_frame'].apply(lambda x : ProcessData.extract_chunk_and_annotated(x))
         # If you want to split the dictionary into separate columns
         df['chunk'] = df['metric'].apply(lambda x: x['chunk'])
+        df['total_chunks'] = df['metric'].apply(lambda x: x['total_chunks'])
+
         df['annotated'] = df['metric'].apply(lambda x: x['annotated'])
         # Optionally drop the 'metric' column if not needed anymore
         df.drop(columns=['metric'], inplace=True)
@@ -165,6 +172,8 @@ class ProcessData:
         # Remove repeted rows based on frame_number
         return df.drop_duplicates(subset=conditions, keep='first')
     
+    
+    
     @staticmethod
     def aggregate_groups(group: pd.DataFrame) -> dict:
         
@@ -205,11 +214,6 @@ class ProcessData:
             
         return final_data
 
-    def set_filenames(self, video_id: str, results_file_name: str) -> Tuple[str, str]:
-        
-        self.workdir = f"{self.output_folder}{video_id}"
-        output_file_path = f"{self.workdir}/{results_file_name}"
-        return output_file_path
 
     def create_json_data(self, df: pd.DataFrame,
                         annotated_video: str, 
@@ -218,16 +222,16 @@ class ProcessData:
                         original_video: str = None,
                         keep_columns: Union[List[str], None] = None
                         ) -> dict:
+
         additional_data = {
             'annotated_video': annotated_video,
             'original_video': original_video
         }
-                
         # remove duplicates
-        df = self.remove_duplicates(df, conditions= conditions)
+        df_dd = self.remove_duplicates(df, conditions = conditions)
         
         # Create aggregated data
-        return self.create_aggregated_data(df, 
+        return self.create_aggregated_data(df_dd, 
                                             keep_columns=keep_columns, 
                                             output_path=output_path, 
                                             additional_data=additional_data)
@@ -239,8 +243,8 @@ class ProcessData:
                         bucket_name: str,
                         video_handler: VideoHandler) -> str:
         
-        
-        df_videos = df.drop_duplicates(subset=['annotated_video'], keep='first')
+        df_work = df.copy()
+        df_videos = df_work.drop_duplicates(subset=['annotated_video'], keep='first')
 
         df_videos['annotated_video'] = df_videos['annotated_video'].apply(lambda x: x.split("/")[-1])
         df_videos['remote_annotated_video'] = df_videos['annotated_video'].apply(lambda x: f"{video_id}/{x}")
@@ -253,12 +257,21 @@ class ProcessData:
         
         return video_output_path_remote
 
+
+
+    def set_filenames(self, video_id: str, results_file_name: str) ->  str:
+        
+        self.workdir = os.path.join(self.output_folder, video_id)
+        output_file_path = os.path.join(self.workdir, results_file_name)
+        return output_file_path
+    
+    
 if __name__ == '__main__':
 
     data_path = '../data/outputs/data.csv'
 
     # Join VIDEO
-    output_folder = './tmp/'
+    output_folder = './tmp'
     video_handler = VideoHandler( output_folder = output_folder)
 
     # Minio client
