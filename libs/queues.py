@@ -1,5 +1,5 @@
 import json
-from kafka import KafkaProducer, KafkaConsumer
+from managment_kafka import KafkaProducer, KafkaConsumer
 import logging
 import numpy as np
 

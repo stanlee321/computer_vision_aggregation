@@ -27,9 +27,14 @@ def put_to_redis(
                  ) -> str:
     
     if local_data_path:
-        # Load data from local path to json_data
-        with open(local_data_path, 'r') as file:
-            json_data = json.load(file)
+        # # Load data from local path to json_data
+        # with open(local_data_path, 'r') as file:
+        #     json_data = json.load(file)
+        
+        # Save data to local path
+        with open(local_data_path, 'w') as file:
+            json.dump(json_data, file)
+        
     # Save to Redis
     key = f"video:{video_id}_label:{label}"
     

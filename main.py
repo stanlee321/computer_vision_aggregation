@@ -15,6 +15,16 @@ from libs.utils import (
 
 from typing import Tuple, List
 
+
+SERVER_IP = "192.168.1.16"
+
+minio_key = "WraSmXSjxqJgFgPSklHk"
+minio_secret = "Jt4AeVlUVcLZmrhxaRDcABTx2Ir3ODlmxxuXLnsF"
+minio_url = f"{SERVER_IP}:9000"
+
+# Kafka
+brokers = [f'{SERVER_IP}:9092']
+
 class Application:
     def __init__(self):
         self.bucket_name = "my-bucket"
@@ -22,15 +32,15 @@ class Application:
         self.topic_fine_detections = 'fine-detections'
         self.topic_group = 'results-group'
         self.output_folder = './tmp'
-        self.bootstrap_servers = ['localhost:9093']
+        self.bootstrap_servers = ['192.168.1.16:9092']
         self.data_handler = ProcessData()
         self.kafka_handler = KafkaHandler(bootstrap_servers=self.bootstrap_servers)
-        self.client_minio = Minio("0.0.0.0:9000",
-                                    access_key="minioadmin",
-                                    secret_key="minioadmin",
+        self.client_minio = Minio("192.168.1.16:9000",
+                                    access_key="WraSmXSjxqJgFgPSklHk",
+                                    secret_key="Jt4AeVlUVcLZmrhxaRDcABTx2Ir3ODlmxxuXLnsF",
                                     secure=False)
         self.video_handler = VideoHandler(output_folder=self.output_folder)
-        self.redis_client = RedisClient(host='0.0.0.0', port=6379)
+        self.redis_client = RedisClient(host='192.168.1.16', port=6379, password="Secret.")
         
         self.api_client = ApiClient("http://127.0.0.1:8000")
         self.workdir = self.output_folder
@@ -84,7 +94,10 @@ class Application:
         task_files = self.data_handler.download_remote_files(self.df_tasks, 
                                                                self.client_minio, 
                                                                self.bucket_name, 
-                                                               self.workdir)       
+                                                               self.workdir,
+                                                               video_id = video_id
+                                                               
+                                                               )       
         return task_files
 
     def create_main_dataframe(self, output_files: List[str], fps: int)-> pd.DataFrame:
@@ -92,6 +105,21 @@ class Application:
         df = self.data_handler.create_annotations(df)
         df = self.data_handler.join_frames(df)
         df = self.data_handler.create_timestamps(df, fps=fps)
+        
+        # extract the class from the class_id array as the first element
+        df["class"] = df["class_id"].apply(lambda x: x)
+        df["track_id"] = df["tracker_id"].apply(lambda x: x)
+        df['confidence'] =df["confidence"].apply(lambda x:  x)
+        
+        # expand xyxy "[[1294.099853515625, 786.7964477539062, 2145.39892578125, 1426.97998046875]]" to  box.x1,box.y1,box.x2,box.y2
+        # First combert xyxy string to array
+        df['xyxy'] = df['xyxy'].apply(lambda x: x)
+        df['box.x1'] = df['xyxy'].apply(lambda x: x[0][0] if x else 0)
+        df['box.y1'] = df['xyxy'].apply(lambda x: x[0][1] if x else 0)
+        df['box.x2'] = df['xyxy'].apply(lambda x: x[0][2] if x else 0)
+        df['box.y2'] = df['xyxy'].apply(lambda x: x[0][3] if x else 0)
+        
+        df['name'] = df['data.class_name'].apply(lambda x: x)
         
         return df
         
@@ -146,7 +174,8 @@ class Application:
         
 
         # video_id = "a29615c3-9227-496e-b688-839ad828c898"
-        # df = pd.read_csv('./tmp/a29615c3-9227-496e-b688-839ad828c898/output_6_6.csv')
+        df = pd.read_csv(working_data_file)
+        print("saving data to ...", working_data_file )
         
         # Process the data
         remote_video_path = self.data_handler.create_join_video(
@@ -162,31 +191,26 @@ class Application:
         local_file_results_full = self.data_handler.set_filenames(
             video_id=video_id, results_file_name = 'output_json_timestamp_full.json')
   
-        # json_data =  self.data_handler.create_json_data(df, 
-        #                                               annotated_video = remote_video_path, 
-        #                                               conditions = ['frame_number', 'class'], 
-        #                                               output_path = local_file_results, 
-        #                                               keep_columns = ['timestamp', 'class', 'name', 'track_id', 's3_path'],
-        #                                               original_video = self.original_video
-        #                                               )
-        
-        # key_data = put_to_redis(video_id, json_data, None, self.redis_client, label='lite')
         
         json_data_full =  self.data_handler.create_json_data(
                                              df, 
                                              annotated_video = remote_video_path, 
-                                             conditions = ['frame_number', 'class'], 
+                                             conditions = ['frame_number', 'class_id'], 
                                              output_path = local_file_results_full, 
                                              original_video = self.original_video,
                                              keep_columns = None)
 
         # Save json_data_full to json file
-            
-        key_data_full = put_to_redis(video_id, json_data_full, None, self.redis_client, label="complete")
+        complete_data_path = os.path.join(self.workdir, 'complete_data.json')
+        key_data_full = put_to_redis(video_id, json_data_full, redis_client =  self.redis_client, label="complete", local_data_path = complete_data_path)
 
+        # Upload complete data to minio
+        self.client_minio.fput_object(self.bucket_name, f'{video_id}/complete_data.json', complete_data_path)
+        
+        
         # Send the data to the next topic
         self.kafka_handler.produce_message(self.topic_fine_detections, 
-                                           {   "lite_data": "key_data",
+                                            { 
                                                "full_data": key_data_full
                                             })
         
@@ -201,7 +225,7 @@ class Application:
         print("Group: {}".format(self.topic_group))
         consumer = self.kafka_handler.create_consumer(self.topic_input, 
                                                         self.topic_group, 
-                                                        auto_offset_reset='latest')
+                                                        auto_offset_reset='earliest')
         for message in consumer:
             print(f"Consumed message: {message.value}")
             self.process_message(message)

@@ -3,8 +3,13 @@ import re
 import json
 import pandas as pd
 from minio import Minio
+import ast
 from typing import Union, List, Tuple
 from libs.video_handler import VideoHandler
+
+
+
+
 
 
 class ProcessData:
@@ -50,16 +55,17 @@ class ProcessData:
             # Load the JSON data from the 'data' column
             data = row['data']
             
-            for result in data['results']:
-                result['frame_number'] = data['frame_number']
-                result['original_frame'] = data['original_frame']
-                result['s3_path'] = data['s3_path']
-                result['fps'] = row['fps']
-                
-                result['total_frames'] = row['total_frames']
-                result['annotated_video'] = row['annotated_video']
-                
-                inner_data.append(result)
+            # for result in data['results']:
+            result = data['results']
+            result['frame_number'] = data['frame_number']
+            result['original_frame'] = data['original_frame']
+            result['s3_path'] = data['s3_path']
+            result['fps'] = row['fps']
+            
+            result['total_frames'] = row['total_frames']
+            result['annotated_video'] = row['annotated_video']
+            
+            inner_data.append(result)
 
         # Create a DataFrame from the flattened list of dictionaries
         return pd.json_normalize(inner_data)
@@ -94,9 +100,13 @@ class ProcessData:
 
 
     @staticmethod
-    def download_remote_files(df: pd.DataFrame, client: Minio, bucket_name: str, workdir: str) -> List[str]:
+    def download_remote_files(df: pd.DataFrame, client: Minio, bucket_name: str, workdir: str, video_id: str) -> List[str]:
 
         task_remote_paths:List[str] = list(df['remote_path'].values)
+        
+        # Filer only the ones with the video_id
+        task_remote_paths = [path for path in task_remote_paths if video_id in path]
+        print("task_remote_paths ", task_remote_paths)
 
         output_files = []
         for task_remote_file in task_remote_paths:
@@ -179,13 +189,45 @@ class ProcessData:
         
         # remove "timestamp" from group
         group.drop(columns=['timestamp'], inplace=True)
+        
+        group.fillna('[]', inplace=True)
+        names = []
+        classes = []
+        
+        try:
+            names = ProcessData.extract_unique_names(group["name"])
+        except Exception as e:
+            print("Error extracting names", e)
+            
+        try:
+            classes = ProcessData.extract_unique_names(group["class"])
+        except Exception as e:
+            print("Error extracting classes", e)
+
         return {
-            "names": group["name"].unique().tolist(),
-            "classes": group["class"].unique().tolist(),
+            "names": names,
+            "classes": classes,
             "data": group.to_dict(orient="records")
         }
+        
+    @staticmethod
+    def extract_unique_names(all_names):
+        # Initialize an empty set to store unique names
+        unique_names = set()
+
+        # Iterate through each string in the list
+        for name_str in all_names:
+            # Use ast.literal_eval to safely convert the string representation of the list to an actual list
+            names_list = ast.literal_eval(name_str)
+            # Update the set with the elements of the list (sets automatically handle duplicates)
+            unique_names.update(names_list)
+
+        # Convert the set back to a sorted list
+        return sorted(unique_names)
     
     def create_aggregated_data(self, df: pd.DataFrame, keep_columns: Union[List[str], None], output_path: str, additional_data: dict) -> dict:
+
+
         
         if keep_columns is None:
             keep_columns = df.columns.tolist()
@@ -193,13 +235,28 @@ class ProcessData:
         df = df[keep_columns]
         grouped = df.groupby("timestamp", group_keys=False).apply(ProcessData.aggregate_groups).to_dict()
 
+
+        df.fillna('[]', inplace=True)
         all_classes = df['class'].unique()
         all_names = df['name'].unique()
+        
+        all_classes_list = []
+        all_names_list = []
+        
+        try:
+            all_classes_list = self.extract_unique_names(all_classes.tolist())
+        except Exception as e:
+            print("Error extracting classes", e)
+            
+        try:    
+            all_names_list = self.extract_unique_names(all_names.tolist())
+        except Exception as e:
+            print("Error extracting names", e)
 
         final_data = {
             "ground_detections": grouped,
-            "all_classes": all_classes.tolist(),
-            "all_names": all_names.tolist(),
+            "all_classes": all_classes_list,
+            "all_names": all_names_list,
         }
 
         # merge final_data with additional_data

@@ -46,9 +46,16 @@ class VideoHandler:
         width, height, fps = VideoHandler.get_video_properties(video_list[0])
 
         # Create VideoWriter object
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for MP4
+        # fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for MP4
+        fourcc = cv2.VideoWriter_fourcc(*'avc1')  # Use H.264 codec
+
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
+        bitrate: int = 75
+        # Set compression parameters (only applicable for some backends)
+        out.set(cv2.VIDEOWRITER_PROP_QUALITY, bitrate)
+        out.set(cv2.VIDEOWRITER_PROP_FRAMEBYTES, 1000)
+        
         for video_path in tqdm(video_list):
             print("Working on video: ", video_path)
             cap = cv2.VideoCapture(video_path)
