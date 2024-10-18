@@ -14,5 +14,5 @@ unicorn main:app
 
 python -m  fastapi dev main.py
 
-uvicorn main:app --reload
+uvicorn main:app --reload --port 8003
 ```

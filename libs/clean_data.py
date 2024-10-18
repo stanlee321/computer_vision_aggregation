@@ -8,10 +8,6 @@ from typing import Union, List, Tuple
 from libs.video_handler import VideoHandler
 
 
-
-
-
-
 class ProcessData:
     def __init__(self):
         self.output_folder = './tmp'

@@ -9,23 +9,24 @@ if __name__ == '__main__':
         
     
 
-
+    ip_server = "localhost"
     print("Startingg...")
 
-    kafka_address = '192.168.1.16:9092'
+    kafka_address = f'{ip_server}:9092'
     kafka_handler = KafkaHandler(bootstrap_servers=[kafka_address])
-    api_client = ApiClient("http://127.0.0.1:8000")
+    api_client = ApiClient("http://{ip_server}:8003")
 
     bucket_name = "my-bucket"
     topic_results = 'video-results'
 
-    chunks  = [1, 2, 3, 4, 5]
+    chunks  = [1, 2, 3]
 
     for index in chunks:
         print("Sending...")
-        video_id = "05a2c75b-7d1e-4466-9e96-c8609cd576ad"
-
-        remote_path = f"{video_id}/resumed_maq_ch2_main_20210207170000_20210207180000_chunk_{index}_of_{len(chunks)}_results.json"
+        video_id = "d51ebe0e-7b31-4927-a274-5e705e865b5f"
+        file_name = "8"
+        
+        remote_path = f"{video_id}/{file_name}_chunk_{index}_of_{len(chunks)}_results.json"
         # new_item = {
         #     "remote_path": remote_path ,
         #     "video_id": video_id,
