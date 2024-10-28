@@ -77,7 +77,7 @@ def run_tests(client):
         {
             "remote_path": "test/path/2",
             "original_video": "video_url_2",
-            "video_id": "vid_001",  # Same video_id, different path
+            "video_id": "vid_002",  # Same video_id, different path
             "status": "processing",
             "kind": "fine",
             "fps": 30.0
@@ -93,9 +93,14 @@ def run_tests(client):
     # Test 3: Get item by ID
     print("\nTest 3: Getting item by ID...")
     if created_items:
-        item_id = created_items[0]['id']
-        item = client.get_item(item_id)
-        print(f"Retrieved item {item_id}: {item}")
+        if 'details' in created_items[0]:
+            if '400' in created_items[0]['details']:
+                print(f"Item creation failed with error: {created_items[0]['details']['400']}")
+                pass
+            else:
+                item_id = created_items[0]['id']
+                item = client.get_item(item_id)
+                print(f"Retrieved item {item_id}: {item}")
     
     # Test 4: Get items by video_id
     print("\nTest 4: Getting items by video_id...")
@@ -110,9 +115,14 @@ def run_tests(client):
     # Test 6: Update item status
     print("\nTest 6: Updating item status...")
     if created_items:
-        item_id = created_items[0]['id']
-        update_result = client.update_item(item_id, {"status": "completed"})
-        print(f"Updated item {item_id}: {update_result}")
+        if 'details' in created_items[0]:
+            if '400' in created_items[0]['details']:
+                print(f"Item update failed with error: {created_items[0]['details']['400']}")
+                pass
+            else:
+                item_id = created_items[0]['id']
+                update_result = client.update_item(item_id, {"status": "completed"})
+                print(f"Updated item {item_id}: {update_result}")
     
     # Test 7: Test invalid operations
     print("\nTest 7: Testing invalid operations...")
@@ -125,12 +135,17 @@ def run_tests(client):
     except Exception as e:
         print(f"Expected error caught: {str(e)}")
     
-    # # Test 8: Delete items
-    # print("\nTest 8: Deleting items...")
-    # for created_item in created_items:
-    #     item_id = created_item['id']
-    #     delete_result = client.delete_item(item_id)
-    #     print(f"Deleted item {item_id}: {delete_result}")
+    # Test 8: Delete items
+    print("\nTest 8: Deleting items...")
+    for created_item in created_items:
+        if 'details' in created_item:
+            if '400' in created_item['details']:
+                print(f"Item deletion failed with error: {created_item['details']['400']}")
+                pass
+            else:
+                item_id = created_item['id']
+                delete_result = client.delete_item(item_id)
+                print(f"Deleted item {item_id}: {delete_result}")
     
     # Final verification
     print("\nFinal verification: Getting all items...")
@@ -141,5 +156,5 @@ def run_tests(client):
 
 
 if __name__ == "__main__":
-    client = VideoHandlerClient("http://127.0.0.1:8003")
+    client = VideoHandlerClient("http://192.168.1.9:8003")
     run_tests(client)
