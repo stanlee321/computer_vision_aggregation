@@ -1,8 +1,13 @@
 import redis
 
 class RedisClient:
-    def __init__(self, host='localhost', port=6379, db=0):
-        self.client = redis.StrictRedis(host=host, port=port, db=db, decode_responses=True)
+    def __init__(self, host='localhost', port=6379, db=0, password=None):
+        self.client = redis.StrictRedis(
+            host=host, 
+            port=port,
+            password=password,
+            db=db, 
+            decode_responses=True)
     
     def set_value(self, key, value):
         try:
