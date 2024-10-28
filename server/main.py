@@ -1,57 +1,86 @@
-import os
-import json
-import pandas as pd
-import numpy as np
+import sqlite3
 from fastapi import FastAPI, HTTPException, Query
-from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from fastapi.responses import JSONResponse
 from typing import Optional
+from contextlib import asynccontextmanager, contextmanager
+import os
 
-# File path for storing the DataFrame as a CSV
-csv_file_path = "data.csv"
+# Database configuration
+DATABASE_NAME = os.getenv('DATABASE_NAME', 'video_handler.db')
 
-# Function to load or initialize the DataFrame
-def load_data():
-    if os.path.exists(csv_file_path):
-        return pd.read_csv(csv_file_path)
-    else:
-        # Initialize DataFrame if no CSV exists
-        data = {
-            "id": [1, 2, 3],
-            "remote_path": ["some path"] * 3,
-            "original_video": ["some video url"] * 3,
-            "video_id": ["some id"] * 3,
-            "status": ["some status"] * 3,
-            "kind": ["ground"] * 3, # or fine
-            "fps": [2.7] * 3
-        }
-        df = pd.DataFrame(data)
-        df.to_csv(csv_file_path, index=False)  # Save initial data to CSV
-        return df
+def init_db():
+    """Initialize the SQLite database and create the items table if it doesn't exist"""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
     
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            remote_path TEXT NOT NULL,
+            original_video TEXT NOT NULL,
+            video_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            fps REAL NOT NULL
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
 
+def dict_factory(cursor, row):
+    """Convert SQLite row to dictionary"""
+    fields = [column[0] for column in cursor.description]
+    return {key: value for key, value in zip(fields, row)}
 
-# Create a FastAPI instance
-app = FastAPI()
+def get_db_connection():
+    """Create a database connection that returns rows as dictionaries"""
+    conn = sqlite3.connect(DATABASE_NAME)
+    conn.row_factory = dict_factory
+    return conn
 
-# Load or initialize the DataFrame
-df = load_data()
+@contextmanager
+def get_db():
+    """Context manager for database connections"""
+    conn = get_db_connection()
+    try:
+        yield conn
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
 
-def create_id(df):
-    if df.empty:
-        return 1
-    return df['id'].max() + 1
+# Define lifespan context manager
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager for FastAPI application.
+    Handles database initialization and cleanup.
+    """
+    # Startup: Initialize the database
+    init_db()
+    yield
+    # Shutdown: Clean up database connections
+    try:
+        conn = get_db_connection()
+        conn.close()
+    except Exception:
+        pass
+
+# Create a FastAPI instance with lifespan
+app = FastAPI(lifespan=lifespan)
 
 class ItemRequest(BaseModel):
-    id : Optional[int] = None
+    id: Optional[int] = None
     remote_path: str
     original_video: str
     video_id: str
     status: str
     kind: str
     fps: float
-    
+
 class UpdateStatusRequest(BaseModel):
     status: str
 
@@ -59,94 +88,145 @@ class UpdateStatusRequest(BaseModel):
 def read_root():
     return {"message": "Welcome to the Video Handler API!!!"}
 
-def clean_df_for_json(df):
-    df = load_data()
-
-    return df.replace([np.inf, -np.inf, np.nan], None).to_dict(orient='records')
-
 @app.get("/items/")
 def read_items():
-    df = load_data()
     try:
-        clean_data = clean_df_for_json(df)
-        return clean_data
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM items ORDER BY id")
+            items = cursor.fetchall()
+            if not items:
+                return []
+            return items
     except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
-
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/items/video_id/{video_id}/")
-def read_by_video_id(video_id: str, status: str = Query(
-                                default=None, 
-                                description="Filter items by status"),
-                                kind: str = Query(
-                                default=None,
-                                description="Filter items by kind")
-                     ):
-    df = load_data()
-    # Filter dataframe based on provided video_id and optional status and kind
-    if status and kind:
-        items = df[(df['video_id'] == video_id) & (df['status'] == status) & (df['kind'] == kind)]
-    elif status:
-        items = df[(df['video_id'] == video_id) & (df['status'] == status)]
-    elif kind:
-        items = df[(df['video_id'] == video_id) & (df['kind'] == kind)]
-    else:
-        items = df[df['video_id'] == video_id]
-
-    if items.empty:
-        raise HTTPException(status_code=404, detail="Items not found")
-    
+def read_by_video_id(
+    video_id: str,
+    status: str = Query(default=None, description="Filter items by status"),
+    kind: str = Query(default=None, description="Filter items by kind")
+):
     try:
-        clean_items = clean_df_for_json(items)
-        return clean_items
+        with get_db() as conn:
+            cursor = conn.cursor()
+            
+            query = ["SELECT * FROM items WHERE video_id = ?"]
+            params = [video_id]
+            
+            if status is not None:
+                query.append("AND status = ?")
+                params.append(status)
+            if kind is not None:
+                query.append("AND kind = ?")
+                params.append(kind)
+            
+            final_query = " ".join(query) + " ORDER BY id"
+            cursor.execute(final_query, params)
+            items = cursor.fetchall()
+            
+            if not items:
+                raise HTTPException(status_code=404, detail="Items not found")
+            
+            return items
     except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
-    
-    
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/items/{item_id}")
 def read_item(item_id: int):
-    df = load_data()
-
-    item = df[df['id'] == item_id]
-    if item.empty:
-        raise HTTPException(status_code=404, detail="Item not found")
     try:
-        clean_item = clean_df_for_json(item)
-        return clean_item[0] if clean_item else {"message": "Item not found"}
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+        item = cursor.fetchone()
+        conn.close()
+        
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found")
+        
+        return item
     except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
-    
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/items/")
 def create_item(item: ItemRequest):
-    df = load_data()
-    item.id = create_id(df)
-    if item.id in df['id'].values or (item.video_id in df['video_id'].values and item.remote_path in df['remote_path'].values):
-        raise HTTPException(status_code=400, detail="Item with this ID already exists")
-    df.loc[len(df)] = item.model_dump()
-    df.to_csv(csv_file_path, index=False)  # Save updated data to CSV
-    return {"message": "Item created successfully", "id": int(item.id)}
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute(
+                "SELECT id FROM items WHERE (video_id = ? AND remote_path = ?) OR id = ?",
+                (item.video_id, item.remote_path, item.id if item.id else -1)
+            )
+            if cursor.fetchone():
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Item with this video_id and remote_path combination or ID already exists"
+                )
+            
+            if not isinstance(item.fps, (int, float)) or item.fps <= 0:
+                raise HTTPException(status_code=400, detail="FPS must be a positive number")
+            
+            if item.kind not in ['ground', 'fine']:
+                raise HTTPException(status_code=400, detail="Kind must be either 'ground' or 'fine'")
+            
+            cursor.execute("""
+                INSERT INTO items (remote_path, original_video, video_id, status, kind, fps)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (item.remote_path, item.original_video, item.video_id, item.status, item.kind, item.fps))
+            
+            new_id = cursor.lastrowid
+            
+            cursor.execute("SELECT * FROM items WHERE id = ?", (new_id,))
+            created_item = cursor.fetchone()
+            
+            return {"message": "Item created successfully", "id": new_id, "item": created_item}
+    except sqlite3.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/items/{item_id}")
 def update_item_status(item_id: int, item: UpdateStatusRequest):
-    df = load_data()
-
-    # 'status' update 
-    new_status = item.status
-    if item_id not in df['id'].values:
-        raise HTTPException(status_code=404, detail="Item not found")
-    df.loc[df['id'] == item_id, ['status']] = new_status
-    df.to_csv(csv_file_path, index=False)  # Save updated data to CSV
-
-    return item
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            
+            if not item.status:
+                raise HTTPException(status_code=400, detail="Status cannot be empty")
+            
+            cursor.execute("SELECT id FROM items WHERE id = ?", (item_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Item not found")
+            
+            cursor.execute(
+                "UPDATE items SET status = ? WHERE id = ?",
+                (item.status, item_id)
+            )
+            
+            cursor.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+            updated_item = cursor.fetchone()
+            return updated_item
+    except sqlite3.Error as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/items/{item_id}")
 def delete_item(item_id: int):
-    df = load_data()
-
-    if item_id not in df['id'].values:
-        raise HTTPException(status_code=404, detail="Item not found")
-    df = df[df['id'] != item_id]
-    df.to_csv(csv_file_path, index=False)  # Save updated data to CSV
-
-    return {"message": "Item deleted successfully"}
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT id FROM items WHERE id = ?", (item_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Item not found")
+        
+        cursor.execute("DELETE FROM items WHERE id = ?", (item_id,))
+        conn.commit()
+        conn.close()
+        
+        return {"message": "Item deleted successfully"}
+    except sqlite3.Error as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    

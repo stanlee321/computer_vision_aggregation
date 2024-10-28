@@ -8,7 +8,6 @@ from libs.api import ApiClient
 if __name__ == '__main__':
         
     
-
     ip_server = "localhost"
     print("Startingg...")
 
