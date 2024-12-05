@@ -2,7 +2,7 @@ import os
 import re
 import pandas as pd
 import uuid
-
+import json
 from typing import Tuple, List
 
 from libs.queues import KafkaHandler
@@ -177,10 +177,14 @@ class Application:
         
         # Add the process to the json data
         json_data_full['process'] = f"{chunk_number}/{max_chunks}"
+        os.makedirs(self.workdir, exist_ok=True)
         
-        # Save json_data_full to json file
+    
+        # Save json_data_full to json file to the working directory
         complete_data_path = os.path.join(self.workdir, 'complete_data.json')
-
+        with open(complete_data_path, 'w') as f:
+            json.dump(json_data_full, f)
+        
         # Upload complete data to minio
         self.client_minio.fput_object(self.bucket_name, f'{video_id}/complete_data.json', complete_data_path)
         
