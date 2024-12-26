@@ -4,7 +4,7 @@ import pandas as pd
 import uuid
 import json
 from typing import Tuple, List
-
+from datetime import datetime
 from libs.queues import KafkaHandler
 from libs.api import ApiClient
 
@@ -116,7 +116,12 @@ class Application:
         df['box.x2'] = df['xyxy'].apply(lambda x: x[0][2] if x else 0)
         df['box.y2'] = df['xyxy'].apply(lambda x: x[0][3] if x else 0)
         
-        df['name'] = df['data.class_name'].apply(lambda x: x)
+        try:
+            df['name'] = df['data.class_name'].apply(lambda x: x)
+        except:
+            # Save the dataframe to a csv file as a debug
+            current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+            df.to_csv(os.path.join(self.workdir, f'debug_dataframe_{current_time}.csv'), index=False)
         
         return df
         
