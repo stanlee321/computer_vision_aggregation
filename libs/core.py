@@ -173,18 +173,11 @@ class Application:
                                              conditions = ['frame_number', 'class_id'], 
                                              output_path = local_file_results_full, 
                                              original_video = self.original_video,
-                                             keep_columns = None)
+                                             keep_columns = None,
+                                             chunk_number = chunk_number,
+                                             max_chunks = max_chunks)
         
-        # Add the process to the json data
-        json_data_full['process'] = f"{chunk_number}/{max_chunks}"
-        os.makedirs(self.workdir, exist_ok=True)
-        
-    
-        # # Save json_data_full to json file to the working directory
-        # complete_data_path = os.path.join(self.workdir, 'complete_data.json')
-        # with open(complete_data_path, 'w') as f:
-        #     json.dump(json_data_full, f)
-        
+
         # Upload complete data to minio
         self.client_minio.fput_object(self.bucket_name, f'{video_id}/complete_data.json', local_file_results_full)
         

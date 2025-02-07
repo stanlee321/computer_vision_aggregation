@@ -273,12 +273,15 @@ class ProcessData:
                         conditions: Union[List[str], None],
                         output_path: str = 'output_json_timestamp.json',
                         original_video: str = None,
-                        keep_columns: Union[List[str], None] = None
+                        keep_columns: Union[List[str], None] = None,
+                        chunk_number: int = 1,
+                        max_chunks: int = 1
                         ) -> dict:
 
         additional_data = {
             'annotated_video': annotated_video,
-            'original_video': original_video
+            'original_video': original_video,
+            'process': f"{chunk_number}/{max_chunks}"
         }
         # remove duplicates
         df_dd = self.remove_duplicates(df, conditions = conditions)

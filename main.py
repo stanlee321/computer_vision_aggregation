@@ -2,11 +2,11 @@ import os
 from libs.core import Application
 
 
-SERVER_IP = "192.168.1.19"
+SERVER_IP = "192.168.1.37"
 API_BASE_URL = f"http://{SERVER_IP}:8003"
 
-minio_key = "c3aFDmKuGhPCSxkpRDGf"
-minio_secret = "MLYz9tZI3h4xZAwBl8llyEtX6R07YcMuRdSYPIcx"
+minio_key = "NOfNwE9NwrWiKZesnTlI"
+minio_secret = "FPWiMeB68OBFr3e2QwYF38aXQvNtANAt6sj8ux0M"
 minio_url = f"{SERVER_IP}:9000"
 BUCKET_NAME = "my-bucket"
 
