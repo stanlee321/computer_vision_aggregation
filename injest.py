@@ -1,13 +1,10 @@
-import os
-import json
+
 from libs.queues import KafkaHandler
-from typing import List
 from libs.api import ApiClient
 
      
 if __name__ == '__main__':
         
-    
     ip_server = "localhost"
     print("Startingg...")
 
