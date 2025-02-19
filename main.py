@@ -1,12 +1,14 @@
 import os
 from libs.core import Application
+from dotenv import load_dotenv
 
+load_dotenv()  
 
-SERVER_IP = "192.168.1.37"
+SERVER_IP = os.getenv("IP_ADDRESS")
 API_BASE_URL = f"http://{SERVER_IP}:8003"
 
-minio_key = "NOfNwE9NwrWiKZesnTlI"
-minio_secret = "FPWiMeB68OBFr3e2QwYF38aXQvNtANAt6sj8ux0M"
+minio_key = os.getenv("MINIO_ACCESS_KEY")
+minio_secret = os.getenv("MINIO_SECRET_KEY")
 minio_url = f"{SERVER_IP}:9000"
 BUCKET_NAME = "my-bucket"
 
@@ -19,6 +21,10 @@ WORKING_FOLDER = "./tmp"
 
 if __name__ == "__main__":
     print("Starting...")
+    
+    # Validate environment variables first
+    if not SERVER_IP:
+        raise ValueError("IP_ADDRESS environment variable not set")
     
     os.makedirs(WORKING_FOLDER, exist_ok=True)
     

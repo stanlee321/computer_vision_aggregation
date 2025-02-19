@@ -3,6 +3,10 @@ from kafka import KafkaConsumer, KafkaProducer
 
 import json
 
+import os
+
+IP_ADDRESS = os.getenv("IP_ADDRESS")
+
 def list_topics(kafka_address):
     admin_client = KafkaAdminClient(
         bootstrap_servers=kafka_address,
@@ -71,7 +75,7 @@ def delete_kafka_topics(kafka_address, topics):
 
 
 if __name__ == '__main__':
-    kafka_address = '192.168.1.16:9092'
+    kafka_address = f'{IP_ADDRESS}:9092'
     topics = list_topics(kafka_address)
    
     # delete topics 
