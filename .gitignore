@@ -4,3 +4,5 @@
 *.log
 *.mp4
 *.csv
+
+.env
