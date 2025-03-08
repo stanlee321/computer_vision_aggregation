@@ -6,7 +6,7 @@ import json
 from typing import Tuple, List
 from datetime import datetime
 from libs.queues import KafkaHandler
-from libs.api import ApiClient
+from libs.api import ApiClient, UpdateStatus
 
 from libs.video_handler import VideoHandler
 from libs.clean_data import ProcessData
@@ -21,7 +21,10 @@ class Application:
                  topic_input: str,
                  topic_output: str,
                  bucket_name: str,
-                 output_folder: str
+                 output_folder: str,
+                 backend_email: str,
+                 backend_password: str,
+                 backend_base_url: str
                  ):
         
         
@@ -41,6 +44,8 @@ class Application:
         self.api_client = ApiClient(api_base_url)
         self.workdir = self.output_folder
         
+        self.updater = UpdateStatus(backend_base_url, backend_email, backend_password)
+
         self.fps = None
         self.original_video = None
         self.df_tasks = None
@@ -132,6 +137,7 @@ class Application:
         _message_input = message.value
         remote_path: str = _message_input['info_path']
         video_id: str = _message_input['video_id']
+        job_id: str = _message_input['job_id']
         
         tasks_list = self.create_main_tasks(video_id, remote_path)
 
@@ -199,6 +205,9 @@ class Application:
         for id in ids_to_update:
             self.api_client.update_item_status(id, update_data)
             
+        # Update the status of the job
+        self.updater.run(job_id=job_id, status='Finished')
+        print("Job finished")
     def generate_uuid(self):
         return str(uuid.uuid4())
 
