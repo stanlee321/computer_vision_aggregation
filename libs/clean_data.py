@@ -294,6 +294,7 @@ class ProcessData:
         
         
     def create_join_video(self, video_id: str, 
+                          job_id: str,
                         df: pd.DataFrame, 
                         minio_client: Minio, 
                         bucket_name: str,
@@ -303,7 +304,7 @@ class ProcessData:
         df_videos = df_work.drop_duplicates(subset=['annotated_video'], keep='first')
 
         df_videos['annotated_video'] = df_videos['annotated_video'].apply(lambda x: x.split("/")[-1])
-        df_videos['remote_annotated_video'] = df_videos['annotated_video'].apply(lambda x: f"{video_id}/{x}")
+        df_videos['remote_annotated_video'] = df_videos['annotated_video'].apply(lambda x: f"{video_id}/{job_id}/{x}")
         df_videos['local_annotated_video'] = df_videos['annotated_video'].apply(lambda x: f"{self.workdir}/{x}")
 
         videos_info_list = df_videos[['annotated_video', 'remote_annotated_video', 'local_annotated_video']].to_dict(orient='records')
