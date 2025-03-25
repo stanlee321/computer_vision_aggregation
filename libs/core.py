@@ -151,10 +151,6 @@ class Application:
         chunk_number = (df['chunk'].iloc[-1]).max()
         max_chunks = df['total_chunks'].iloc[0]
 
-        print(chunk_number)
-        print(max_chunks)
-
-
         working_data_file  = self.get_working_data_file(chunk_number, max_chunks)
 
         df.to_csv(working_data_file, index=False)
@@ -188,9 +184,10 @@ class Application:
                                              chunk_number = chunk_number,
                                              max_chunks = max_chunks)
         
-
+        remote_path = f'{video_id}/{job_id}/complete_data.json'
+        
         # Upload complete data to minio
-        self.client_minio.fput_object(self.bucket_name, f'{video_id}/complete_data.json', local_file_results_full)
+        self.client_minio.fput_object(self.bucket_name, remote_path, local_file_results_full)
         
         
         # Send the data to the next topic
