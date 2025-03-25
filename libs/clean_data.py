@@ -310,7 +310,7 @@ class ProcessData:
         videos_info_list = df_videos[['annotated_video', 'remote_annotated_video', 'local_annotated_video']].to_dict(orient='records')
 
         # Join videos
-        video_output_path_remote = video_handler.process(video_id, videos_info_list, minio_client, bucket_name)
+        video_output_path_remote = video_handler.process(video_id, videos_info_list, minio_client, bucket_name, job_id)
         
         return video_output_path_remote
 
@@ -340,7 +340,7 @@ if __name__ == '__main__':
 
     bucket_name = "my-bucket"
     video_id = '5049e5f6-ec91-4afb-b2f5-a63a991a7993'
-
+    job_id = '1234567890'
     
     data_handler = ProcessData(
     )
@@ -360,7 +360,7 @@ if __name__ == '__main__':
     df_videos = df.drop_duplicates(subset=['annotated_video'], keep='first')
 
     # Join videos
-    video_output_path_remote = video_handler.process(video_id, df_videos, minio_client, bucket_name)
+    video_output_path_remote = video_handler.process(video_id, df_videos, minio_client, bucket_name, job_id)
     
     additional_data = {
         'annotated_video': video_output_path_remote,

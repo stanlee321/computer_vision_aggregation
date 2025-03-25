@@ -114,7 +114,7 @@ class VideoHandler:
 
 
 
-    def set_names(self,  video_id: str, video_path_data: dict):
+    def set_names(self,  video_id: str, video_path_data: dict, job_id: str):
         self.work_dir  = os.path.join(self.output_folder, video_id)
         
         self.video_annotated_name = video_path_data['annotated_video']
@@ -124,11 +124,11 @@ class VideoHandler:
         self.aux_output_local_video_build_name = os.path.join(self.work_dir, self.aux_output_video_build_name)
         
         self.build_local_video_path = os.path.join(self.work_dir, self.output_video_build_name)
-        self.build_remote_video_path = os.path.join(video_id, self.output_video_build_name)
+        self.build_remote_video_path = os.path.join(video_id, job_id,  self.output_video_build_name)
         
-    def process(self, video_id: str, videos_list: List[dict], minio_client: Minio, bucket_name: str) -> str:
+    def process(self, video_id: str, videos_list: List[dict], minio_client: Minio, bucket_name: str, job_id: str) -> str:
 
-        self.set_names(video_id, videos_list[0])
+        self.set_names(video_id, videos_list[0], job_id)
         
         videos_list = self.get_annotated_video_list(
             videos_list=videos_list,
