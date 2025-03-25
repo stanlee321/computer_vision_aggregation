@@ -161,6 +161,7 @@ class Application:
         # Process the data
         remote_video_path = self.data_handler.create_join_video(
             video_id, 
+            job_id,
             df, 
             minio_client = self.client_minio, 
             bucket_name= self.bucket_name, 
