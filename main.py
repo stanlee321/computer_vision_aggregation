@@ -45,4 +45,4 @@ if __name__ == "__main__":
                       topic_output=TOPIC_OUTPUT,
                       bucket_name=BUCKET_NAME,
                       output_folder=WORKING_FOLDER)
-    app.run()
+    app.run(offset='latest')
