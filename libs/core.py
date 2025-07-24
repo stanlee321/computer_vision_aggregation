@@ -99,7 +99,17 @@ class Application:
                                                                self.workdir,
                                                                video_id = video_id
                                                                
-                                                               )       
+                                                               )
+        
+        # Check if all expected files were downloaded
+        expected_files = len(self.df_tasks)
+        downloaded_files = len(task_files)
+        print(f"Downloaded files: {downloaded_files}/{expected_files}")
+        
+        if downloaded_files < expected_files:
+            print(f"WARNING: Missing {expected_files - downloaded_files} files. Not all chunks are ready yet.")
+            return None  # Return None to indicate incomplete data
+                       
         return task_files
 
     def create_main_dataframe(self, output_files: List[str], fps: int)-> pd.DataFrame:
@@ -150,13 +160,22 @@ class Application:
 
         chunk_number = (df['chunk'].iloc[-1]).max()
         max_chunks = df['total_chunks'].iloc[0]
+        
+        # Check if all chunks are available
+        unique_chunks = df['chunk'].nunique()
+        print(f"Processing chunks: {unique_chunks}/{max_chunks}")
+        
+        # Only proceed if we have ALL the chunks
+        if unique_chunks < max_chunks:
+            print(f"Waiting for more chunks... Got {unique_chunks}, need {max_chunks}")
+            return
 
         working_data_file  = self.get_working_data_file(chunk_number, max_chunks)
 
         df.to_csv(working_data_file, index=False)
 
         df = pd.read_csv(working_data_file)
-        print("saving data to ...", working_data_file )
+        print("All chunks available! Processing complete data to...", working_data_file )
         
         # Process the data
         remote_video_path = self.data_handler.create_join_video(

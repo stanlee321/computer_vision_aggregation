@@ -105,13 +105,24 @@ class ProcessData:
         print("task_remote_paths ", task_remote_paths)
 
         output_files = []
+        failed_downloads = []
+        
         for task_remote_file in task_remote_paths:
             file_name = task_remote_file.split('/')[-1]            
             file_output_path = os.path.join(workdir, file_name)
-            client.fget_object(bucket_name, 
-                            task_remote_file, 
-                            file_output_path)
-            output_files.append(file_output_path)
+            
+            try:
+                client.fget_object(bucket_name, 
+                                task_remote_file, 
+                                file_output_path)
+                output_files.append(file_output_path)
+            except Exception as e:
+                print(f"Failed to download {task_remote_file}: {e}")
+                failed_downloads.append(task_remote_file)
+        
+        if failed_downloads:
+            print(f"WARNING: {len(failed_downloads)} files failed to download")
+            print(f"Failed files: {failed_downloads}")
                 
         return output_files
 
