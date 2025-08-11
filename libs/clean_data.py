@@ -129,6 +129,12 @@ class ProcessData:
             file_name = task_remote_file.split('/')[-1]            
             file_output_path = os.path.join(workdir, file_name)
             
+            # Check if file already exists locally
+            if os.path.exists(file_output_path):
+                print(f"File already exists locally: {file_name}")
+                output_files.append(file_output_path)
+                continue
+            
             print(f"Downloading: {task_remote_file}")
             
             try:

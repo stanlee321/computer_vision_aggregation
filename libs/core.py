@@ -134,9 +134,24 @@ class Application:
         downloaded_files = len(task_files)
         print(f"Downloaded files: {downloaded_files}/{expected_files}")
         
-        if downloaded_files < expected_files:
-            print(f"WARNING: Missing {expected_files - downloaded_files} files. Not all chunks are ready yet.")
+        # Check if we have at least the minimum required chunks (2 for a complete video)
+        if downloaded_files < 2:
+            print(f"WARNING: Only {downloaded_files} files downloaded. Need at least 2 chunks.")
             return None  # Return None to indicate incomplete data
+        
+        # If we have some files but not all, update the df_tasks to only include downloaded ones
+        if downloaded_files < expected_files:
+            print(f"WARNING: Missing {expected_files - downloaded_files} files.")
+            print("Processing only the available files...")
+            
+            # Filter df_tasks to only include tasks that were successfully downloaded
+            downloaded_names = [os.path.basename(f).replace('_results.json', '') for f in task_files]
+            self.df_tasks = self.df_tasks[
+                self.df_tasks['remote_path'].apply(
+                    lambda x: any(name in x for name in downloaded_names)
+                )
+            ]
+            print(f"Filtered to {len(self.df_tasks)} valid tasks")
                        
         return task_files
 
