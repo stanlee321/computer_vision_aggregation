@@ -27,16 +27,17 @@ class KafkaHandler:
         producer: KafkaProducer = KafkaProducer(
             bootstrap_servers=self.bootstrap_servers,
             value_serializer=lambda v: json.dumps(v, default=self.json_serializer).encode('utf-8'),
-            # Connection settings to improve stability
+            # Fixed configuration: delivery_timeout_ms > linger_ms + request_timeout_ms
+            linger_ms=10,
+            request_timeout_ms=30000,
+            delivery_timeout_ms=120000,      # Must be > linger_ms + request_timeout_ms
             retry_backoff_ms=1000,
             reconnect_backoff_ms=2000,
             reconnect_backoff_max_ms=30000,
-            request_timeout_ms=120000,       # Consistent with consumer
             acks='all',
-            retries=5,
+            retries=3,
             max_in_flight_requests_per_connection=1,
-            batch_size=16384,
-            linger_ms=10
+            batch_size=16384
         )
 
         return producer

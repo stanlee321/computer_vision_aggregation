@@ -48,7 +48,7 @@ class SimpleKafkaHandler:
             session_timeout_ms=10000,      # 10 seconds
             request_timeout_ms=30000,      # 30 seconds (> session_timeout)
             heartbeat_interval_ms=3000,    # 3 seconds (< session_timeout/3)
-            consumer_timeout_ms=5000       # 5 seconds
+            consumer_timeout_ms=1000       # 1 second timeout for polling
         )
         return consumer
     
@@ -102,18 +102,32 @@ def main():
         )
         logger.info("✅ Consumer created successfully")
         
-        # Simple message loop
+        # Simple message loop with timeout handling
         logger.info("🔄 Waiting for messages... (Ctrl+C to stop)")
         message_count = 0
         
-        for message in consumer:
-            message_count += 1
-            logger.info(f"📨 Message #{message_count}: {message.value}")
-            
-            # Here you would process the message
-            # For now, just log it
-            
-        consumer.close()
+        try:
+            while True:
+                # Poll for messages with timeout
+                message_batch = consumer.poll(timeout_ms=1000)
+                
+                if message_batch:
+                    for topic_partition, messages in message_batch.items():
+                        for message in messages:
+                            message_count += 1
+                            logger.info(f"📨 Message #{message_count}: {json.dumps(message.value, indent=2)}")
+                            
+                            # Here you would process the message
+                            # For now, just log it
+                else:
+                    # No messages received in timeout period
+                    logger.debug("⏳ No messages, continuing to poll...")
+                    
+        except KeyboardInterrupt:
+            logger.info("⏹️  Stopping...")
+        finally:
+            consumer.close()
+            logger.info(f"✅ Processed {message_count} messages total")
         
     except KeyboardInterrupt:
         logger.info("⏹️  Shutting down...")
