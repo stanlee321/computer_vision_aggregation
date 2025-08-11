@@ -4,14 +4,28 @@ import json
 import pandas as pd
 from minio import Minio
 import ast
+import cv2
+import shutil
+import concurrent.futures
+import threading
 from typing import Union, List, Tuple
 from libs.video_handler import VideoHandler
 
 
 class ProcessData:
-    def __init__(self):
+    def __init__(self, optimal_workers=None):
         self.output_folder = './tmp'
         self.workdir = self.output_folder
+        self.optimal_workers = optimal_workers or {
+            'base': 4,
+            'io_intensive': 6,
+            'memory_intensive': 4,
+            'video_processing': 3
+        }
+    
+    def set_optimal_workers(self, optimal_workers: dict):
+        """Update optimal workers configuration"""
+        self.optimal_workers = optimal_workers
         
     def create_data_task(self, remote_path, file_path:str, video_id, status: str):
         # Mockup for creating task data
@@ -35,13 +49,34 @@ class ProcessData:
         return pd.concat([tasks_df, new_task_data], ignore_index=True)
 
     def get_json_data(self, tasks_dir: str) -> pd.DataFrame:
-        # List files in output/{asset_id} dir
-        df_list = []
-        for file in tasks_dir:
-            df_data = pd.read_json(file)
-            df_list.append(df_data)
-
-        return pd.concat(df_list)
+        """Read JSON files in parallel for faster loading"""
+        print(f"🔄 Reading {len(tasks_dir)} JSON files in parallel...")
+        
+        def read_json_file(file_path):
+            try:
+                df = pd.read_json(file_path)
+                print(f"✅ Loaded: {os.path.basename(file_path)} ({len(df)} records)")
+                return df
+            except Exception as e:
+                print(f"❌ Failed to read {file_path}: {e}")
+                return pd.DataFrame()
+        
+        # Parallel JSON reading with optimal workers
+        max_workers = self.optimal_workers.get('memory_intensive', 4)
+        print(f"📚 Reading {len(tasks_dir)} JSON files with {max_workers} workers...")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            df_list = list(executor.map(read_json_file, tasks_dir))
+        
+        # Filter out empty dataframes and concatenate
+        df_list = [df for df in df_list if not df.empty]
+        
+        if df_list:
+            result_df = pd.concat(df_list)
+            print(f"🔗 Joined {len(df_list)} chunks → {len(result_df)} total records")
+            return result_df
+        else:
+            print("⚠️ No valid data found in JSON files")
+            return pd.DataFrame()
                 
     def clean_data(self, df: pd.DataFrame) -> pd.DataFrame:
         # Create an empty list to store the parsed data
@@ -96,49 +131,46 @@ class ProcessData:
 
 
     @staticmethod
-    def download_remote_files(df: pd.DataFrame, client: Minio, bucket_name: str, workdir: str, video_id: str) -> List[str]:
-
-        task_remote_paths:List[str] = list(df['remote_path'].values)
+    def find_local_result_files(df: pd.DataFrame, video_id: str) -> List[str]:
+        """Find local result files in processing directories with parallel file checking"""
         
-        # Filer only the ones with the video_id
+        task_remote_paths: List[str] = list(df['remote_path'].values)
         task_remote_paths = [path for path in task_remote_paths if video_id in path]
-
+        
+        base_processing_dir = "../computer_vision_demos/tmp"
+        print(f"🔍 Checking {len(task_remote_paths)} local result files in parallel...")
+        
+        def check_file_exists(task_remote_file):
+            file_name = task_remote_file.split('/')[-1]
+            local_file_path = os.path.join(base_processing_dir, video_id, file_name)
+            
+            if os.path.exists(local_file_path):
+                print(f"✅ Found: {file_name}")
+                return local_file_path, None
+            else:
+                print(f"❌ Missing: {file_name}")
+                return None, file_name
+        
         output_files = []
-        failed_downloads = []
-        existing_files = []
         missing_files = []
         
-        # First, check which files exist
-        for task_remote_file in task_remote_paths:
-            try:
-                client.stat_object(bucket_name, task_remote_file)
-                existing_files.append(task_remote_file)
-            except Exception:
-                missing_files.append(task_remote_file)
-        
-        print(f"📊 Files check: {len(existing_files)}/{len(task_remote_paths)} exist")
-        if missing_files and len(missing_files) <= 5:  # Only show if few missing
-            print(f"❌ Missing: {[f.split('/')[-1] for f in missing_files]}")
-        elif missing_files:
-            print(f"❌ Missing {len(missing_files)} files (chunks still processing)")
-        
-        # Download only existing files
-        for task_remote_file in existing_files:
-            file_name = task_remote_file.split('/')[-1]            
-            file_output_path = os.path.join(workdir, file_name)
+        # Parallel file existence checking
+        # Parallel file checking with optimal I/O workers
+        max_workers = self.optimal_workers.get('io_intensive', 8)
+        print(f"🔍 Checking {len(self.df_tasks)} local files with {max_workers} workers...")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results = executor.map(check_file_exists, task_remote_paths)
             
-            try:
-                client.fget_object(bucket_name, 
-                                task_remote_file, 
-                                file_output_path)
-                output_files.append(file_output_path)
-            except Exception as e:
-                print(f"❌ Download failed: {file_name} - {e}")
-                failed_downloads.append(task_remote_file)
+            for local_path, missing_file in results:
+                if local_path:
+                    output_files.append(local_path)
+                else:
+                    missing_files.append(missing_file)
         
-        if failed_downloads:
-            print(f"WARNING: {len(failed_downloads)} files failed to download")
-            print(f"Failed files: {failed_downloads}")
+        print(f"📊 Local files: {len(output_files)}/{len(task_remote_paths)} found")
+        
+        if missing_files:
+            print(f"⏳ Still processing: {missing_files}")
                 
         return output_files
 
@@ -341,7 +373,111 @@ class ProcessData:
         
         return video_output_path_remote
 
-
+    def create_crops_from_detections(self, df: pd.DataFrame, video_id: str, job_id: str, 
+                                   annotated_video_path: str, minio_client: Minio, 
+                                   bucket_name: str) -> str:
+        """Create image crops from detections and upload to images/ directory"""
+        
+        # Create local images directory
+        images_dir = os.path.join(self.workdir, "images")
+        os.makedirs(images_dir, exist_ok=True)
+        
+        # Get the local video path
+        local_video_path = os.path.join(self.workdir, "temp_video_for_crops.mp4")
+        
+        # Download the annotated video temporarily for cropping
+        try:
+            minio_client.fget_object(bucket_name, annotated_video_path, local_video_path)
+        except Exception as e:
+            print(f"⚠️ Could not download video for cropping: {e}")
+            return None
+            
+        cap = cv2.VideoCapture(local_video_path)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        
+        # Process detections for unique crops
+        unique_detections = df.drop_duplicates(subset=['timestamp', 'track_id'], keep='first')
+        crop_count = 0
+        
+        print(f"🖼️ Creating crops from {len(unique_detections)} detections...")
+        
+        for _, detection in unique_detections.iterrows():
+            try:
+                # Calculate frame number from timestamp
+                frame_num = int(detection['timestamp'] * fps)
+                
+                # Seek to frame
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+                ret, frame = cap.read()
+                
+                if not ret:
+                    continue
+                    
+                # Extract bounding box
+                x1, y1, x2, y2 = int(detection['box.x1']), int(detection['box.y1']), \
+                               int(detection['box.x2']), int(detection['box.y2'])
+                
+                # Crop the detection
+                crop = frame[y1:y2, x1:x2]
+                
+                if crop.size == 0:
+                    continue
+                
+                # Create filename: timestamp_trackid_class.jpg
+                crop_filename = f"{detection['timestamp']:.2f}_{detection['track_id']}_{detection['class']}.jpg"
+                crop_path = os.path.join(images_dir, crop_filename)
+                
+                # Save crop
+                cv2.imwrite(crop_path, crop)
+                crop_count += 1
+                
+            except Exception as e:
+                print(f"⚠️ Error creating crop: {e}")
+                continue
+        
+        cap.release()
+        
+        # Clean up temp video file
+        if os.path.exists(local_video_path):
+            os.remove(local_video_path)
+        
+        print(f"✅ Created {crop_count} image crops")
+        
+        # Upload images directory to MinIO in parallel
+        images_remote_path = f"{video_id}/{job_id}/images"
+        
+        def upload_image(image_file):
+            if image_file.endswith(('.jpg', '.png', '.jpeg')):
+                local_image_path = os.path.join(images_dir, image_file)
+                remote_image_path = f"{images_remote_path}/{image_file}"
+                
+                try:
+                    minio_client.fput_object(bucket_name, remote_image_path, local_image_path)
+                    return f"✅ {image_file}"
+                except Exception as e:
+                    return f"❌ {image_file}: {e}"
+            return f"⏩ Skipped {image_file}"
+        
+        # Get list of image files
+        image_files = os.listdir(images_dir)
+        
+        if image_files:
+            print(f"📤 Uploading {len(image_files)} images in parallel...")
+            
+            # Upload images in parallel
+            # Parallel image upload with optimal I/O workers
+            max_workers = self.optimal_workers.get('io_intensive', 6)
+            print(f"📤 Uploading {len(image_files)} images with {max_workers} workers...")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                upload_results = list(executor.map(upload_image, image_files))
+            
+            # Count successful uploads
+            successful = sum(1 for result in upload_results if result.startswith("✅"))
+            print(f"📤 Uploaded {successful}/{len(image_files)} images to: {images_remote_path}")
+        else:
+            print(f"⚠️ No images to upload")
+        
+        return images_remote_path
 
     def set_filenames(self, video_id: str, results_file_name: str) ->  str:
         

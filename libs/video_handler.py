@@ -130,17 +130,34 @@ class VideoHandler:
 
         self.set_names(video_id, videos_list[0], job_id)
         
-        videos_list = self.get_annotated_video_list(
+        # Download chunks temporarily for video joining
+        local_videos = self.get_annotated_video_list(
             videos_list=videos_list,
             client=minio_client,
             bucket_name=bucket_name)        
         
-        VideoHandler.join_videos(videos_list, self.build_local_video_path)
+        # Create final joined video
+        VideoHandler.join_videos(local_videos, self.build_local_video_path)
+        print(f"✅ Created final video: {self.build_local_video_path}")
         
-        # Upload video to Minio
+        # Upload ONLY the final video to Minio (not individual chunks)
         minio_client.fput_object(bucket_name, self.build_remote_video_path, self.build_local_video_path)
+        print(f"📤 Uploaded final video: {self.build_remote_video_path}")
+        
+        # Clean up temporary chunk videos after joining
+        self.cleanup_temporary_videos(local_videos)
         
         return self.build_remote_video_path
+    
+    def cleanup_temporary_videos(self, video_paths: List[str]):
+        """Remove temporary video files after joining"""
+        for video_path in video_paths:
+            try:
+                if os.path.exists(video_path) and 'chunk_' in video_path:
+                    os.remove(video_path)
+                    print(f"🗑️ Cleaned temp video: {os.path.basename(video_path)}")
+            except Exception as e:
+                print(f"⚠️ Could not clean {video_path}: {e}")
     
 
 
