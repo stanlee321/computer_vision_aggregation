@@ -132,12 +132,36 @@ class Application:
         
         # Get id of the chunk
 
+        # Get tasks specifically for this job_id, not just video_id
+        job_id = remote_path.split('/')[1]  # Extract job_id from path
+        print(f"DEBUG: Extracted job_id: {job_id}")
+        
         previous_tasks = self.api_client.get_by_video_id(video_id, status = 'pending')
         if previous_tasks.status_code != 200:
             print("No pending tasks found", previous_tasks.text)
             return
             
-        self.df_tasks = self.data_handler.create_pandas_data(tasks = previous_tasks.json())
+        # Filter tasks to only include the current job_id
+        all_tasks = previous_tasks.json()
+        
+        print(f"DEBUG: Total tasks from API: {len(all_tasks)}")
+        print(f"DEBUG: Looking for job_id: {job_id}")
+        
+        # Debug: Print first few tasks to see structure
+        for i, task in enumerate(all_tasks[:3]):
+            print(f"DEBUG: Task {i+1}: job_id='{task.get('job_id')}', remote_path='{task.get('remote_path')}'")
+        
+        # Since job_id is None in API, filter by remote_path containing the job_id
+        filtered_tasks = [task for task in all_tasks if job_id in task.get('remote_path', '')]
+        print(f"DEBUG: Tasks filtered for job {job_id}: {len(filtered_tasks)}")
+        
+        if not filtered_tasks:
+            print(f"ERROR: No tasks found for job_id {job_id}")
+            print(f"DEBUG: Available job_ids in tasks: {list(set(task.get('job_id') for task in all_tasks))}")
+            print(f"DEBUG: Available remote_paths: {[task.get('remote_path') for task in all_tasks]}")
+            return None
+            
+        self.df_tasks = self.data_handler.create_pandas_data(tasks = filtered_tasks)
         
         # SET the fps
         self.fps = self.df_tasks['fps'].iloc[0]
