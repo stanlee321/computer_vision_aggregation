@@ -31,7 +31,7 @@ class KafkaHandler:
             retry_backoff_ms=1000,
             reconnect_backoff_ms=2000,
             reconnect_backoff_max_ms=30000,
-            request_timeout_ms=60000,
+            request_timeout_ms=120000,       # Consistent with consumer
             acks='all',
             retries=5,
             max_in_flight_requests_per_connection=1,
@@ -76,16 +76,16 @@ class KafkaHandler:
             enable_auto_commit=True,
             group_id=group_id,
             value_deserializer=lambda x: json.loads(x.decode('utf-8')),
-            # Connection settings to improve stability and reduce logs
+            # Fixed: request_timeout_ms must be > session_timeout_ms
             retry_backoff_ms=1000,
             reconnect_backoff_ms=2000,
             reconnect_backoff_max_ms=30000,
-            request_timeout_ms=60000,
+            session_timeout_ms=30000,        # Reduced to 30 seconds
+            request_timeout_ms=120000,       # 2 minutes > session timeout
             consumer_timeout_ms=10000,
-            session_timeout_ms=60000,
-            heartbeat_interval_ms=20000,
-            max_poll_interval_ms=600000,
-            auto_commit_interval_ms=10000,
+            heartbeat_interval_ms=10000,     # Must be < session_timeout_ms/3
+            max_poll_interval_ms=300000,     # 5 minutes
+            auto_commit_interval_ms=5000,
             max_poll_records=100
         )
         return consumer
