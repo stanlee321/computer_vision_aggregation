@@ -341,22 +341,44 @@ class Application:
     def run(self, offset: str = 'latest'):
         print("Consuming topic. {}".format(self.topic_input) ,)
         group_id = 'video-aggregator-' + self.generate_uuid()
-
-        consumer = self.kafka_handler.create_consumer(self.topic_input,
-                                                      group_id=group_id,
-                                                      auto_offset_reset=offset)
-
-        logger.info(f"Starting consumer loop for topic: {self.topic_input}")
         message_count = 0
+        reconnect_attempts = 0
+        max_reconnect_attempts = 10
         
-        for message in consumer:
-            message_count += 1
-            logger.info(f"Consumed message #{message_count}: {message.value}")
-            
+        while True:  # Keep running indefinitely
             try:
-                self.process_message(message)
+                logger.info(f"🔄 Creating Kafka consumer (attempt {reconnect_attempts + 1})...")
+                consumer = self.kafka_handler.create_consumer(self.topic_input,
+                                                              group_id=group_id,
+                                                              auto_offset_reset=offset)
+
+                logger.info(f"✅ Starting consumer loop for topic: {self.topic_input}")
+                reconnect_attempts = 0  # Reset counter on successful connection
+                
+                for message in consumer:
+                    message_count += 1
+                    logger.info(f"📨 Consumed message #{message_count}")
+                    
+                    try:
+                        self.process_message(message)
+                        logger.info(f"✅ Successfully processed message #{message_count}")
+                    except Exception as e:
+                        logger.error(f"❌ Failed to process message #{message_count}: {e}")
+                        logger.error(f"Failed message content: {message.value}")
+                        # Continue processing other messages instead of crashing
+                        continue
+                        
             except Exception as e:
-                logger.error(f"Failed to process message #{message_count}: {e}")
-                logger.error(f"Failed message content: {message.value}")
-                # Continue processing other messages instead of crashing
-                continue
+                reconnect_attempts += 1
+                logger.error(f"💥 Kafka consumer error (attempt {reconnect_attempts}): {e}")
+                
+                if reconnect_attempts >= max_reconnect_attempts:
+                    logger.error(f"❌ Max reconnection attempts ({max_reconnect_attempts}) reached. Exiting.")
+                    break
+                    
+                # Calculate exponential backoff delay
+                delay = min(60, 2 ** reconnect_attempts)  # Max 60 seconds
+                logger.info(f"⏳ Waiting {delay} seconds before reconnecting...")
+                time.sleep(delay)
+                
+        logger.info("🛑 Consumer loop ended")

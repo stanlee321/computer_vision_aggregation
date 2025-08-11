@@ -81,13 +81,19 @@ class KafkaHandler:
             retry_backoff_ms=1000,
             reconnect_backoff_ms=2000,
             reconnect_backoff_max_ms=30000,
-            session_timeout_ms=30000,        # Reduced to 30 seconds
+            session_timeout_ms=30000,        # 30 seconds
             request_timeout_ms=120000,       # 2 minutes > session timeout
-            consumer_timeout_ms=10000,
+            consumer_timeout_ms=-1,          # Set to -1 for infinite timeout (no timeout)
             heartbeat_interval_ms=10000,     # Must be < session_timeout_ms/3
             max_poll_interval_ms=300000,     # 5 minutes
             auto_commit_interval_ms=5000,
-            max_poll_records=100
+            max_poll_records=100,
+            # Additional resilience settings
+            fetch_min_bytes=1,               # Minimum bytes to fetch
+            fetch_max_wait_ms=500,           # Max wait time for fetch
+            metadata_max_age_ms=300000,      # 5 minutes metadata refresh
+            connections_max_idle_ms=540000,  # 9 minutes connection idle
+            check_crcs=True                  # Enable CRC checks
         )
         return consumer
     def produce_message(self, topic, message):
