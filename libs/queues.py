@@ -35,9 +35,14 @@ class KafkaHandler:
             reconnect_backoff_ms=2000,
             reconnect_backoff_max_ms=30000,
             acks='all',
-            retries=3,
+            retries=5,                       # Increased retries
             max_in_flight_requests_per_connection=1,
-            batch_size=16384
+            batch_size=16384,
+            # Additional connection settings
+            api_version_auto_timeout_ms=10000,  # 10 seconds for API version detection
+            metadata_max_age_ms=300000,         # 5 minutes
+            connections_max_idle_ms=540000,     # 9 minutes
+            security_protocol='PLAINTEXT'       # Explicit protocol
         )
 
         return producer
