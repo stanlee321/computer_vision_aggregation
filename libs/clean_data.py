@@ -2,10 +2,15 @@ import os
 import re
 import json
 import pandas as pd
+import logging
 from minio import Minio
+from minio.error import S3Error
 import ast
 from typing import Union, List, Tuple
 from libs.video_handler import VideoHandler
+
+# Configure logger for this module
+logger = logging.getLogger(__name__)
 
 
 class ProcessData:
@@ -97,32 +102,100 @@ class ProcessData:
 
     @staticmethod
     def download_remote_files(df: pd.DataFrame, client: Minio, bucket_name: str, workdir: str, video_id: str) -> List[str]:
-
-        task_remote_paths:List[str] = list(df['remote_path'].values)
+        logger.info(f"Starting download of remote files for video_id: {video_id}")
         
-        # Filer only the ones with the video_id
+        task_remote_paths: List[str] = list(df['remote_path'].values)
+        
+        # Filter only the ones with the video_id
         task_remote_paths = [path for path in task_remote_paths if video_id in path]
-        print("task_remote_paths ", task_remote_paths)
+        logger.info(f"Found {len(task_remote_paths)} remote paths for video_id {video_id}")
+        logger.info(f"Remote paths to download: {task_remote_paths}")
+
+        # Ensure work directory exists
+        os.makedirs(workdir, exist_ok=True)
+        logger.info(f"Work directory ensured: {workdir}")
 
         output_files = []
         failed_downloads = []
+        successful_downloads = []
         
-        for task_remote_file in task_remote_paths:
+        for i, task_remote_file in enumerate(task_remote_paths, 1):
             file_name = task_remote_file.split('/')[-1]            
             file_output_path = os.path.join(workdir, file_name)
             
+            logger.info(f"Downloading file {i}/{len(task_remote_paths)}: {task_remote_file}")
+            
             try:
-                client.fget_object(bucket_name, 
-                                task_remote_file, 
-                                file_output_path)
-                output_files.append(file_output_path)
+                # Check if file already exists locally
+                if os.path.exists(file_output_path):
+                    logger.info(f"File already exists locally: {file_output_path}")
+                    output_files.append(file_output_path)
+                    continue
+                
+                # Try to download the file
+                client.fget_object(bucket_name, task_remote_file, file_output_path)
+                
+                # Verify file was downloaded and has content
+                if os.path.exists(file_output_path) and os.path.getsize(file_output_path) > 0:
+                    output_files.append(file_output_path)
+                    successful_downloads.append(task_remote_file)
+                    logger.info(f"Successfully downloaded: {task_remote_file} -> {file_output_path}")
+                else:
+                    logger.error(f"Download failed - file is empty or doesn't exist: {file_output_path}")
+                    failed_downloads.append(task_remote_file)
+                    
+            except S3Error as e:
+                error_msg = f"S3 error downloading {task_remote_file}: {e}"
+                logger.error(error_msg)
+                failed_downloads.append(task_remote_file)
+                
+                # Log specific S3 error details
+                if hasattr(e, 'code'):
+                    logger.error(f"S3 Error Code: {e.code}")
+                if hasattr(e, 'message'):
+                    logger.error(f"S3 Error Message: {e.message}")
+                    
             except Exception as e:
-                print(f"Failed to download {task_remote_file}: {e}")
+                error_msg = f"Unexpected error downloading {task_remote_file}: {e}"
+                logger.error(error_msg)
                 failed_downloads.append(task_remote_file)
         
+        # Log summary
+        total_expected = len(task_remote_paths)
+        total_successful = len(successful_downloads)
+        total_failed = len(failed_downloads)
+        
+        logger.info(f"Download summary: {total_successful}/{total_expected} files downloaded successfully")
+        
         if failed_downloads:
-            print(f"WARNING: {len(failed_downloads)} files failed to download")
-            print(f"Failed files: {failed_downloads}")
+            logger.warning(f"WARNING: {total_failed} files failed to download")
+            logger.warning(f"Failed files: {failed_downloads}")
+            
+            # Try to identify patterns in failed downloads
+            if total_failed > 0:
+                logger.info("Analyzing failed downloads...")
+                for failed_path in failed_downloads:
+                    try:
+                        # Check if bucket exists
+                        if client.bucket_exists(bucket_name):
+                            logger.info(f"Bucket '{bucket_name}' exists")
+                        else:
+                            logger.error(f"Bucket '{bucket_name}' does not exist!")
+                            
+                        # Try to check if object exists (this might also fail, but gives us more info)
+                        try:
+                            stat = client.stat_object(bucket_name, failed_path)
+                            logger.info(f"Object exists but download failed: {failed_path}")
+                        except S3Error as stat_error:
+                            if stat_error.code == 'NoSuchKey':
+                                logger.error(f"Object does not exist in S3: {failed_path}")
+                            else:
+                                logger.error(f"Error checking object existence: {stat_error}")
+                                
+                    except Exception as analysis_error:
+                        logger.error(f"Error analyzing failed download: {analysis_error}")
+        else:
+            logger.info("All files downloaded successfully!")
                 
         return output_files
 
