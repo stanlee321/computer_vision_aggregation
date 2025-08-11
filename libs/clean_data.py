@@ -102,7 +102,6 @@ class ProcessData:
         
         # Filer only the ones with the video_id
         task_remote_paths = [path for path in task_remote_paths if video_id in path]
-        print("task_remote_paths ", task_remote_paths)
 
         output_files = []
         failed_downloads = []
@@ -114,14 +113,14 @@ class ProcessData:
             try:
                 client.stat_object(bucket_name, task_remote_file)
                 existing_files.append(task_remote_file)
-                print(f"✓ File exists: {task_remote_file}")
-            except Exception as e:
+            except Exception:
                 missing_files.append(task_remote_file)
-                print(f"✗ File missing: {task_remote_file} - {e}")
         
-        print(f"Files check: {len(existing_files)}/{len(task_remote_paths)} exist")
-        if missing_files:
-            print(f"Missing files: {missing_files}")
+        print(f"📊 Files check: {len(existing_files)}/{len(task_remote_paths)} exist")
+        if missing_files and len(missing_files) <= 5:  # Only show if few missing
+            print(f"❌ Missing: {[f.split('/')[-1] for f in missing_files]}")
+        elif missing_files:
+            print(f"❌ Missing {len(missing_files)} files (chunks still processing)")
         
         # Download only existing files
         for task_remote_file in existing_files:
@@ -133,9 +132,8 @@ class ProcessData:
                                 task_remote_file, 
                                 file_output_path)
                 output_files.append(file_output_path)
-                print(f"Downloaded: {task_remote_file}")
             except Exception as e:
-                print(f"Failed to download {task_remote_file}: {e}")
+                print(f"❌ Download failed: {file_name} - {e}")
                 failed_downloads.append(task_remote_file)
         
         if failed_downloads:

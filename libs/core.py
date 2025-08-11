@@ -134,7 +134,7 @@ class Application:
 
         # Get tasks specifically for this job_id, not just video_id
         job_id = remote_path.split('/')[1]  # Extract job_id from path
-        print(f"DEBUG: Extracted job_id: {job_id}")
+        print(f"🎯 Processing job: {job_id}")
         
         previous_tasks = self.api_client.get_by_video_id(video_id, status = 'pending')
         if previous_tasks.status_code != 200:
@@ -144,21 +144,14 @@ class Application:
         # Filter tasks to only include the current job_id
         all_tasks = previous_tasks.json()
         
-        print(f"DEBUG: Total tasks from API: {len(all_tasks)}")
-        print(f"DEBUG: Looking for job_id: {job_id}")
-        
-        # Debug: Print first few tasks to see structure
-        for i, task in enumerate(all_tasks[:3]):
-            print(f"DEBUG: Task {i+1}: job_id='{task.get('job_id')}', remote_path='{task.get('remote_path')}'")
-        
         # Since job_id is None in API, filter by remote_path containing the job_id
         filtered_tasks = [task for task in all_tasks if job_id in task.get('remote_path', '')]
-        print(f"DEBUG: Tasks filtered for job {job_id}: {len(filtered_tasks)}")
+        
+        print(f"🔍 Job filtering: {len(all_tasks)} total → {len(filtered_tasks)} for job {job_id}")
         
         if not filtered_tasks:
-            print(f"ERROR: No tasks found for job_id {job_id}")
-            print(f"DEBUG: Available job_ids in tasks: {list(set(task.get('job_id') for task in all_tasks))}")
-            print(f"DEBUG: Available remote_paths: {[task.get('remote_path') for task in all_tasks]}")
+            print(f"❌ No tasks found for job_id {job_id}")
+            print(f"📝 Available paths: {[task.get('remote_path', 'N/A')[-50:] for task in all_tasks[:3]]}...")
             return None
             
         self.df_tasks = self.data_handler.create_pandas_data(tasks = filtered_tasks)
@@ -168,15 +161,6 @@ class Application:
         self.original_video = self.df_tasks['original_video'].iloc[0]
         
         self.workdir = os.path.join(self.output_folder, video_id)
-        
-        # Debug: List what actually exists in the video folder
-        try:
-            objects = list(self.client_minio.list_objects(self.bucket_name, prefix=f"{video_id}/", recursive=True))
-            print(f"DEBUG: Found {len(objects)} objects in bucket for video {video_id}:")
-            for obj in objects:
-                print(f"  - {obj.object_name}")
-        except Exception as e:
-            print(f"DEBUG: Error listing objects in bucket: {e}")
         
         task_files = self.data_handler.download_remote_files(self.df_tasks, 
                                                                self.client_minio, 
@@ -189,11 +173,11 @@ class Application:
         # Check if all expected files were downloaded
         expected_files = len(self.df_tasks)
         downloaded_files = len(task_files)
-        print(f"Downloaded files: {downloaded_files}/{expected_files}")
-        
         if downloaded_files < expected_files:
-            print(f"WARNING: Missing {expected_files - downloaded_files} files. Not all chunks are ready yet.")
+            print(f"⏳ Waiting for chunks: {downloaded_files}/{expected_files} ready")
             return None  # Return None to indicate incomplete data
+        
+        print(f"✅ All {downloaded_files} chunks ready for processing!")
                        
         return task_files
 
