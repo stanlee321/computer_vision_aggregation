@@ -339,11 +339,11 @@ class ProcessData:
                         video_handler: VideoHandler) -> str:
         
         df_work = df.copy()
-        df_videos = df_work.drop_duplicates(subset=['annotated_video'], keep='first')
+        df_videos = df_work.drop_duplicates(subset=['annotated_video'], keep='first').copy()
 
-        df_videos['annotated_video'] = df_videos['annotated_video'].apply(lambda x: x.split("/")[-1])
-        df_videos['remote_annotated_video'] = df_videos['annotated_video'].apply(lambda x: f"{video_id}/{job_id}/{x}")
-        df_videos['local_annotated_video'] = df_videos['annotated_video'].apply(lambda x: f"{self.workdir}/{x}")
+        df_videos.loc[:, 'annotated_video'] = df_videos['annotated_video'].apply(lambda x: x.split("/")[-1])
+        df_videos.loc[:, 'remote_annotated_video'] = df_videos['annotated_video'].apply(lambda x: f"{video_id}/{job_id}/{x}")
+        df_videos.loc[:, 'local_annotated_video'] = df_videos['annotated_video'].apply(lambda x: f"{self.workdir}/{x}")
 
         videos_info_list = df_videos[['annotated_video', 'remote_annotated_video', 'local_annotated_video']].to_dict(orient='records')
 
