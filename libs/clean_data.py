@@ -100,22 +100,43 @@ class ProcessData:
 
         task_remote_paths:List[str] = list(df['remote_path'].values)
         
-        # Filer only the ones with the video_id
+        # Log all paths before filtering
+        print(f"Total tasks from API: {len(task_remote_paths)}")
+        
+        # Filter only the ones with the video_id
         task_remote_paths = [path for path in task_remote_paths if video_id in path]
-        print("task_remote_paths ", task_remote_paths)
+        print(f"Tasks after filtering by video_id {video_id}: {len(task_remote_paths)}")
+        print("Remote paths to download:", task_remote_paths)
 
         output_files = []
         failed_downloads = []
         
+        # First, check which files actually exist
+        existing_files = []
         for task_remote_file in task_remote_paths:
+            try:
+                # Try to get object info to check if it exists
+                client.stat_object(bucket_name, task_remote_file)
+                existing_files.append(task_remote_file)
+            except Exception as e:
+                print(f"File does not exist in S3: {task_remote_file}")
+                failed_downloads.append(task_remote_file)
+        
+        print(f"Files that exist in S3: {len(existing_files)}/{len(task_remote_paths)}")
+        
+        # Now download only existing files
+        for task_remote_file in existing_files:
             file_name = task_remote_file.split('/')[-1]            
             file_output_path = os.path.join(workdir, file_name)
+            
+            print(f"Downloading: {task_remote_file}")
             
             try:
                 client.fget_object(bucket_name, 
                                 task_remote_file, 
                                 file_output_path)
                 output_files.append(file_output_path)
+                print(f"Successfully downloaded: {file_name}")
             except Exception as e:
                 print(f"Failed to download {task_remote_file}: {e}")
                 failed_downloads.append(task_remote_file)

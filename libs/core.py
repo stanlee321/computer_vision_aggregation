@@ -5,7 +5,7 @@ import uuid
 import json
 import shutil
 from typing import Tuple, List
-from datetime import datetime
+from datetime import datetime, timedelta
 from libs.queues import KafkaHandler
 from libs.api import ApiClient, UpdateStatus
 
@@ -73,7 +73,7 @@ class Application:
         else:
             raise ValueError("Chunk or annotated value not found in the filename")
         
-    def create_main_tasks(self, video_id, remote_path)-> Tuple[pd.DataFrame, pd.DataFrame, str]:
+    def create_main_tasks(self, video_id, remote_path, job_id=None)-> Tuple[pd.DataFrame, pd.DataFrame, str]:
          # Cre`ate filenames
         output_file_path = self.create_filenames(video_id, remote_path)
 
@@ -88,6 +88,33 @@ class Application:
             return
             
         self.df_tasks = self.data_handler.create_pandas_data(tasks = previous_tasks.json())
+        
+        # Filter by job_id if provided
+        if job_id:
+            print(f"Filtering tasks by job_id: {job_id}")
+            # Filter tasks that contain the job_id in their remote_path
+            self.df_tasks = self.df_tasks[self.df_tasks['remote_path'].str.contains(job_id)]
+            print(f"Found {len(self.df_tasks)} tasks for job_id {job_id}")
+        
+        # Filter out old tasks (older than 1 hour)
+        if 'created_at' in self.df_tasks.columns:
+            current_time = datetime.now()
+            timeout_hours = 1  # Tasks older than 1 hour will be ignored
+            
+            # Convert created_at to datetime if it's a string
+            self.df_tasks['created_at'] = pd.to_datetime(self.df_tasks['created_at'])
+            
+            # Filter out old tasks
+            old_tasks = self.df_tasks[self.df_tasks['created_at'] < (current_time - timedelta(hours=timeout_hours))]
+            if len(old_tasks) > 0:
+                print(f"WARNING: Found {len(old_tasks)} tasks older than {timeout_hours} hour(s). These will be ignored.")
+                self.df_tasks = self.df_tasks[self.df_tasks['created_at'] >= (current_time - timedelta(hours=timeout_hours))]
+                print(f"Processing {len(self.df_tasks)} recent tasks.")
+        
+        # Check if we have any tasks left after filtering
+        if len(self.df_tasks) == 0:
+            print(f"No valid tasks found for video_id: {video_id}, job_id: {job_id}")
+            return None
         
         # SET the fps
         self.fps = self.df_tasks['fps'].iloc[0]
@@ -150,7 +177,7 @@ class Application:
         video_id: str = _message_input['video_id']
         job_id: str = _message_input['job_id']
         
-        tasks_list = self.create_main_tasks(video_id, remote_path)
+        tasks_list = self.create_main_tasks(video_id, remote_path, job_id)
 
         print("Tasks list: ", tasks_list)
 
