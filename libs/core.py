@@ -40,6 +40,10 @@ class Application:
                                     access_key= minio_access_key,
                                     secret_key= minio_secret_key,
                                     secure=False)
+        
+        # Test MinIO connection and credentials
+        self.test_minio_connection()
+        
         self.video_handler = VideoHandler(output_folder=self.output_folder)
         
         self.api_client = ApiClient(api_base_url)
@@ -50,6 +54,47 @@ class Application:
         self.fps = None
         self.original_video = None
         self.df_tasks = None
+    
+    def test_minio_connection(self):
+        """Test MinIO connection and credentials"""
+        print("=" * 50)
+        print("TESTING MINIO CONNECTION...")
+        print("=" * 50)
+        
+        try:
+            # Test 1: Check if MinIO is reachable
+            print(f"✓ Connecting to MinIO at: {self.client_minio._base_url}")
+            
+            # Test 2: List buckets (tests credentials)
+            buckets = list(self.client_minio.list_buckets())
+            print(f"✓ Connection successful! Found {len(buckets)} buckets:")
+            for bucket in buckets:
+                print(f"  - {bucket.name} (created: {bucket.creation_date})")
+            
+            # Test 3: Check if our specific bucket exists
+            if self.client_minio.bucket_exists(self.bucket_name):
+                print(f"✓ Target bucket '{self.bucket_name}' exists and is accessible")
+                
+                # Test 4: Try to list some objects in the bucket
+                objects = list(self.client_minio.list_objects(self.bucket_name, max_keys=5))
+                print(f"✓ Bucket access test: Found {len(objects)} sample objects")
+                for obj in objects[:3]:  # Show first 3
+                    print(f"  - {obj.object_name}")
+                if len(objects) > 3:
+                    print(f"  ... and {len(objects) - 3} more")
+            else:
+                print(f"✗ ERROR: Target bucket '{self.bucket_name}' does not exist!")
+                raise Exception(f"Bucket '{self.bucket_name}' not found")
+                
+            print("=" * 50)
+            print("MINIO CONNECTION TEST: SUCCESS")
+            print("=" * 50)
+            
+        except Exception as e:
+            print(f"✗ MINIO CONNECTION FAILED: {e}")
+            print("Check your MinIO credentials and server status")
+            print("=" * 50)
+            raise e
                 
     def create_filenames(self, video_id: str, file:str):
         filename = file.split('/')[-1]
@@ -94,6 +139,16 @@ class Application:
         self.original_video = self.df_tasks['original_video'].iloc[0]
         
         self.workdir = os.path.join(self.output_folder, video_id)
+        
+        # Debug: List what actually exists in the video folder
+        try:
+            objects = list(self.client_minio.list_objects(self.bucket_name, prefix=f"{video_id}/", recursive=True))
+            print(f"DEBUG: Found {len(objects)} objects in bucket for video {video_id}:")
+            for obj in objects:
+                print(f"  - {obj.object_name}")
+        except Exception as e:
+            print(f"DEBUG: Error listing objects in bucket: {e}")
+        
         task_files = self.data_handler.download_remote_files(self.df_tasks, 
                                                                self.client_minio, 
                                                                self.bucket_name, 

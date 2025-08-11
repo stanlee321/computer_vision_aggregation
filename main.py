@@ -10,7 +10,14 @@ API_BASE_URL = f"http://{SERVER_IP}:8003"
 minio_key = os.getenv("MINIO_ACCESS_KEY")
 minio_secret = os.getenv("MINIO_SECRET_KEY")
 minio_url = f"{SERVER_IP}:9000"
-BUCKET_NAME = "my-bucket"
+BUCKET_NAME = os.getenv("BUCKET_NAME", "my-bucket")
+
+# Debug: Print credentials (masked for security)
+print(f"DEBUG: Using MinIO credentials:")
+print(f"  - Access Key: {minio_key[:8]}..." if minio_key else "  - Access Key: NOT SET")
+print(f"  - Secret Key: {minio_secret[:8]}..." if minio_secret else "  - Secret Key: NOT SET") 
+print(f"  - Bucket: {BUCKET_NAME}")
+print(f"  - Server: {minio_url}")
 
 BACKEND_EMAIL =  os.getenv("BACKEND_EMAIL", "admin@example.com")
 BACKEND_PASSWORD = os.getenv("BACKEND_PASSWORD", "Adminpassword1@")

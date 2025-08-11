@@ -106,8 +106,25 @@ class ProcessData:
 
         output_files = []
         failed_downloads = []
+        existing_files = []
+        missing_files = []
         
+        # First, check which files exist
         for task_remote_file in task_remote_paths:
+            try:
+                client.stat_object(bucket_name, task_remote_file)
+                existing_files.append(task_remote_file)
+                print(f"✓ File exists: {task_remote_file}")
+            except Exception as e:
+                missing_files.append(task_remote_file)
+                print(f"✗ File missing: {task_remote_file} - {e}")
+        
+        print(f"Files check: {len(existing_files)}/{len(task_remote_paths)} exist")
+        if missing_files:
+            print(f"Missing files: {missing_files}")
+        
+        # Download only existing files
+        for task_remote_file in existing_files:
             file_name = task_remote_file.split('/')[-1]            
             file_output_path = os.path.join(workdir, file_name)
             
@@ -116,6 +133,7 @@ class ProcessData:
                                 task_remote_file, 
                                 file_output_path)
                 output_files.append(file_output_path)
+                print(f"Downloaded: {task_remote_file}")
             except Exception as e:
                 print(f"Failed to download {task_remote_file}: {e}")
                 failed_downloads.append(task_remote_file)
