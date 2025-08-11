@@ -81,7 +81,7 @@ class KafkaHandler:
 if __name__ == "__main__":
     
     print("Startingg...")
-    kafka_address = f'{IP_ADDRESS}:9093'
+    kafka_address = f'{IP_ADDRESS}:9092'
     
     kafka_handler = KafkaHandler(bootstrap_servers=[kafka_address])
     

@@ -3,6 +3,7 @@ import re
 import pandas as pd
 import uuid
 import json
+import shutil
 from typing import Tuple, List
 from datetime import datetime
 from libs.queues import KafkaHandler
@@ -224,7 +225,21 @@ class Application:
             
         # Update the status of the job
         self.updater.run(job_id=job_id, status='Finished')
+        
+        # Clean up work directory after processing
+        self.cleanup_work_directory(video_id)
+        
         print("Job finished")
+
+    def cleanup_work_directory(self, video_id: str):
+        """Clean up the work directory after processing is complete"""
+        work_dir = f'{self.output_folder}/{video_id}'
+        if os.path.exists(work_dir):
+            try:
+                shutil.rmtree(work_dir)
+                print(f"Cleaned up work directory: {work_dir}")
+            except Exception as e:
+                print(f"Error cleaning up work directory {work_dir}: {e}")
     def generate_uuid(self):
         return str(uuid.uuid4())
 
