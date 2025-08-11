@@ -1,9 +1,16 @@
 import json
-from managment_kafka import KafkaProducer, KafkaConsumer
 import logging
 import numpy as np
-
 import os
+from kafka import KafkaProducer, KafkaConsumer
+
+# Configure Kafka logging to reduce verbosity
+logging.getLogger('kafka').setLevel(logging.WARNING)
+logging.getLogger('kafka.conn').setLevel(logging.ERROR)
+logging.getLogger('kafka.client').setLevel(logging.ERROR)
+logging.getLogger('kafka.coordinator').setLevel(logging.ERROR)
+logging.getLogger('kafka.consumer.subscription_state').setLevel(logging.ERROR)
+logging.getLogger('kafka.coordinator.consumer').setLevel(logging.ERROR)
 
 IP_ADDRESS = os.getenv("IP_ADDRESS")
 
@@ -19,7 +26,17 @@ class KafkaHandler:
     def create_producer(self) -> KafkaProducer:
         producer: KafkaProducer = KafkaProducer(
             bootstrap_servers=self.bootstrap_servers,
-            value_serializer=lambda v: json.dumps(v, default=self.json_serializer).encode('utf-8')
+            value_serializer=lambda v: json.dumps(v, default=self.json_serializer).encode('utf-8'),
+            # Connection settings to improve stability
+            retry_backoff_ms=1000,
+            reconnect_backoff_ms=2000,
+            reconnect_backoff_max_ms=30000,
+            request_timeout_ms=60000,
+            acks='all',
+            retries=5,
+            max_in_flight_requests_per_connection=1,
+            batch_size=16384,
+            linger_ms=10
         )
 
         return producer
@@ -58,7 +75,18 @@ class KafkaHandler:
             auto_offset_reset=auto_offset_reset,
             enable_auto_commit=True,
             group_id=group_id,
-            value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+            value_deserializer=lambda x: json.loads(x.decode('utf-8')),
+            # Connection settings to improve stability and reduce logs
+            retry_backoff_ms=1000,
+            reconnect_backoff_ms=2000,
+            reconnect_backoff_max_ms=30000,
+            request_timeout_ms=60000,
+            consumer_timeout_ms=10000,
+            session_timeout_ms=60000,
+            heartbeat_interval_ms=20000,
+            max_poll_interval_ms=600000,
+            auto_commit_interval_ms=10000,
+            max_poll_records=100
         )
         return consumer
     def produce_message(self, topic, message):

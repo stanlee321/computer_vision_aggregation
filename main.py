@@ -15,6 +15,14 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
+
+# Reduce Kafka logging noise
+logging.getLogger('kafka').setLevel(logging.WARNING)
+logging.getLogger('kafka.conn').setLevel(logging.ERROR)
+logging.getLogger('kafka.client').setLevel(logging.ERROR)
+logging.getLogger('kafka.coordinator').setLevel(logging.ERROR)
+logging.getLogger('kafka.consumer').setLevel(logging.ERROR)
+
 logger = logging.getLogger(__name__)
 
 # Environment variables with validation
@@ -45,27 +53,27 @@ brokers = [f'{SERVER_IP}:9092']
 
 WORKING_FOLDER = "./tmp"
 
-logger.info(f"Configuration loaded:")
-logger.info(f"  SERVER_IP: {SERVER_IP}")
-logger.info(f"  API_BASE_URL: {API_BASE_URL}")
-logger.info(f"  MINIO_URL: {minio_url}")
-logger.info(f"  BUCKET_NAME: {BUCKET_NAME}")
-logger.info(f"  BACKEND_BASE_URL: {BACKEND_BASE_URL}")
-logger.info(f"  TOPIC_INPUT: {TOPIC_INPUT}")
-logger.info(f"  TOPIC_OUTPUT: {TOPIC_OUTPUT}")
-logger.info(f"  BROKERS: {brokers}")
-logger.info(f"  WORKING_FOLDER: {WORKING_FOLDER}")
+logger.info(f"🔧 Configuration:")
+logger.info(f"  📍 SERVER_IP: {SERVER_IP}")
+logger.info(f"  🌐 API_BASE_URL: {API_BASE_URL}")
+logger.info(f"  🗄️  MINIO_URL: {minio_url}")
+logger.info(f"  🪣 BUCKET_NAME: {BUCKET_NAME}")
+logger.info(f"  🔗 BACKEND_BASE_URL: {BACKEND_BASE_URL}")
+logger.info(f"  📥 TOPIC_INPUT: {TOPIC_INPUT}")
+logger.info(f"  📤 TOPIC_OUTPUT: {TOPIC_OUTPUT}")
+logger.info(f"  🚌 BROKERS: {brokers}")
+logger.info(f"  📁 WORKING_FOLDER: {WORKING_FOLDER}")
 
 if __name__ == "__main__":
-    logger.info("=== Starting Computer Vision Aggregation Service ===")
+    logger.info("🚀 === Starting Computer Vision Aggregation Service ===")
     
     try:
         # Create working directory
         os.makedirs(WORKING_FOLDER, exist_ok=True)
-        logger.info(f"Working directory created/verified: {WORKING_FOLDER}")
+        logger.info(f"📁 Working directory ready: {WORKING_FOLDER}")
         
         # Initialize application
-        logger.info("Initializing application...")
+        logger.info("🔧 Initializing application...")
         app = Application(server_ip=SERVER_IP,
                           brokers=brokers,
                           minio_access_key=minio_key, 
@@ -79,15 +87,15 @@ if __name__ == "__main__":
                           bucket_name=BUCKET_NAME,
                           output_folder=WORKING_FOLDER)
         
-        logger.info("Application initialized successfully")
-        logger.info("Starting message consumption...")
+        logger.info("✅ Application initialized successfully")
+        logger.info("🔄 Starting message consumption...")
         
         # Run the application
         app.run(offset='latest')
         
     except KeyboardInterrupt:
-        logger.info("Received interrupt signal, shutting down gracefully...")
+        logger.info("⛔ Received interrupt signal, shutting down gracefully...")
         sys.exit(0)
     except Exception as e:
-        logger.error(f"Fatal error starting application: {e}")
+        logger.error(f"💥 Fatal error starting application: {e}")
         sys.exit(1)

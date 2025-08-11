@@ -1,0 +1,26 @@
+# Computer Vision Aggregation - Complete Dependencies  
+opencv-python==4.9.0.80
+minio==7.1.17
+kafka-python==2.0.2
+pyyaml==6.0.1
+numpy==1.24.3
+
+# Missing dependencies identified:
+python-dotenv==1.0.0
+requests==2.31.0
+pandas==2.1.3
+orjson==3.9.10
+
+# Additional missing standard library usage:
+# shutil - Built-in, no install needed
+# logging - Built-in, no install needed  
+# time - Built-in, no install needed
+# uuid - Built-in, no install needed
+# os - Built-in, no install needed
+# re - Built-in, no install needed
+# json - Built-in, no install needed
+# ast - Built-in, no install needed
+
+# Optional but recommended:
+psutil==5.9.6      # For memory monitoring
+typing-extensions==4.8.0  # For better typing support
