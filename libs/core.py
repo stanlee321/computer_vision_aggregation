@@ -76,7 +76,12 @@ class Application:
                 print(f"✓ Target bucket '{self.bucket_name}' exists and is accessible")
                 
                 # Test 4: Try to list some objects in the bucket
-                objects = list(self.client_minio.list_objects(self.bucket_name, max_keys=5))
+                objects = []
+                for obj in self.client_minio.list_objects(self.bucket_name):
+                    objects.append(obj)
+                    if len(objects) >= 5:  # Limit to 5 objects manually
+                        break
+                        
                 print(f"✓ Bucket access test: Found {len(objects)} sample objects")
                 for obj in objects[:3]:  # Show first 3
                     print(f"  - {obj.object_name}")
